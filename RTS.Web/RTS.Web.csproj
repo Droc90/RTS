@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Radzen.Blazor" Version="11.2.5" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\RTS.Application\RTS.Application.csproj" />
     <ProjectReference Include="..\RTS.Contracts\RTS.Contracts.csproj" />
     <ProjectReference Include="..\RTS.Infrastructure\RTS.Infrastructure.csproj" />

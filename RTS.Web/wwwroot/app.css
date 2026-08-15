@@ -245,17 +245,28 @@ code {
 }
 
 .rts-brand {
-    color: var(--rts-text);
-    font-size: 1.25rem;
-    font-weight: 700;
-    line-height: 1;
+    display: block;
+    position: relative;
+    flex: 0 0 auto;
+    width: 17rem;
+    height: 3.5rem;
+    overflow: hidden;
     text-decoration: none;
 }
 
     .rts-brand:hover {
-        color: #0a58ca;
-        text-decoration: underline;
+        text-decoration: none;
     }
+
+.rts-brand-logo {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    display: block;
+    width: 100%;
+    height: auto;
+    transform: translateY(-50%);
+}
 
 .rts-account-navigation {
     min-width: 0;
@@ -380,6 +391,11 @@ code {
 }
 
 @media (max-width: 575.98px) {
+    .rts-brand {
+        width: 14rem;
+        height: 3rem;
+    }
+
     .rts-navigation {
         flex-direction: column;
         gap: 0.75rem;

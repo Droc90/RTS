@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
+using Radzen;
 using RTS.Application.Identity;
 using RTS.Infrastructure;
 using RTS.Infrastructure.Identity;
@@ -115,6 +116,7 @@ builder.Services.AddHsts(options =>
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddRadzenComponents();
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
