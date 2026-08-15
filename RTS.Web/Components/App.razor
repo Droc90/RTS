@@ -9,9 +9,9 @@
 
     <link rel="stylesheet"
           href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
+    <RadzenTheme Theme="material" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["RTS.Web.styles.css"]" />
-    <RadzenTheme Theme="material" />
 
     <ImportMap />
     <HeadOutlet @rendermode="InteractiveServer" />
@@ -27,3 +27,40 @@
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    [Inject]
+    private ThemeService ThemeService { get; set; } = default!;
+
+    [Inject]
+    private IOptions<CookieThemeServiceOptions> ThemeCookieOptions { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        if (HttpContext is null)
+        {
+            return;
+        }
+
+        var cookieName = ThemeCookieOptions.Value.Name;
+        var theme = HttpContext.Request.Cookies[cookieName];
+
+        if (!string.IsNullOrWhiteSpace(theme))
+        {
+            ThemeService.SetTheme(theme, false);
+            return;
+        }
+
+        HttpContext.Response.Cookies.Append(
+            cookieName,
+            "material",
+            new CookieOptions
+            {
+                Secure = ThemeCookieOptions.Value.IsSecure,
+                Expires = DateTimeOffset.UtcNow.Add(ThemeCookieOptions.Value.Duration)
+            });
+    }
+}

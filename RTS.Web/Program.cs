@@ -117,6 +117,11 @@ builder.Services.AddHsts(options =>
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddRadzenComponents();
+builder.Services.AddRadzenCookieThemeService(options =>
+{
+    options.Name = "RTS.Theme";
+    options.Duration = TimeSpan.FromDays(365);
+});
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
