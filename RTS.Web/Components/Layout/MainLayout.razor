@@ -1,5 +1,7 @@
 ﻿@inherits LayoutComponentBase
 
+@inject CookieThemeService CookieThemeService
+
 <a class="skip-link"
    href="#main-content">
     Skip to main content
@@ -9,13 +11,22 @@
     <nav class="container rts-navigation"
          aria-label="Primary navigation">
         <a href="/"
-           class="rts-brand"
-           aria-label="Ranked Trading System home">
-            Ranked Trading System
+           class="rts-brand">
+            <img src="images/BD2RTS.png"
+                 class="rts-brand-logo"
+                 alt="Ranked Trading System" />
         </a>
 
-        <div class="rts-account-navigation">
-            <LoginDisplay />
+        <div class="rts-header-actions">
+            <div class="rts-theme-toggle">
+                <RadzenAppearanceToggle LightTheme="material"
+                                        DarkTheme="material-dark"
+                                        title="Switch light or dark mode" />
+            </div>
+
+            <div class="rts-account-navigation">
+                <LoginDisplay />
+            </div>
         </div>
     </nav>
 </header>
@@ -43,3 +54,5 @@
         &times;
     </button>
 </div>
+
+<RadzenComponents @rendermode="InteractiveServer" />

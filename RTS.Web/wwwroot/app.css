@@ -1,12 +1,12 @@
 :root {
-    --rts-page-background: #f5f7fa;
-    --rts-surface: #ffffff;
-    --rts-text: #212529;
-    --rts-muted-text: #5f6872;
-    --rts-border: #d8dee4;
-    --rts-focus: #0a58ca;
-    --rts-danger: #b42318;
-    --rts-success: #157347;
+    --rts-page-background: var(--rz-base-100, #f5f7fa);
+    --rts-surface: var(--rz-base-background-color, #ffffff);
+    --rts-text: var(--rz-text-color, #212529);
+    --rts-muted-text: var(--rz-text-secondary-color, #5f6872);
+    --rts-border: var(--rz-base-300, #d8dee4);
+    --rts-focus: var(--rz-primary, #0a58ca);
+    --rts-danger: var(--rz-danger, #b42318);
+    --rts-success: var(--rz-success, #157347);
     --rts-content-width: 1200px;
 }
 
@@ -15,6 +15,10 @@ html {
 }
 
 body {
+    --bs-body-bg: var(--rts-page-background);
+    --bs-body-color: var(--rts-text);
+    --bs-border-color: var(--rts-border);
+
     min-height: 100vh;
     margin: 0;
     color: var(--rts-text);
@@ -245,21 +249,44 @@ code {
 }
 
 .rts-brand {
-    color: var(--rts-text);
-    font-size: 1.25rem;
-    font-weight: 700;
-    line-height: 1;
+    display: block;
+    position: relative;
+    flex: 0 0 auto;
+    width: 17rem;
+    height: 3.5rem;
+    overflow: hidden;
     text-decoration: none;
 }
 
     .rts-brand:hover {
-        color: #0a58ca;
-        text-decoration: underline;
+        text-decoration: none;
     }
+
+.rts-brand-logo {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    display: block;
+    width: 100%;
+    height: auto;
+    transform: translateY(-50%);
+}
 
 .rts-account-navigation {
     min-width: 0;
     text-align: right;
+}
+
+.rts-header-actions {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.rts-theme-toggle {
+    flex: 0 0 auto;
 }
 
 .rts-main-content {
@@ -365,6 +392,10 @@ code {
         font-size: 0.925rem;
     }
 
+    .rts-header-actions {
+        gap: 0.75rem;
+    }
+
     .rts-main-content {
         padding-top: 1.5rem;
         padding-bottom: 2rem;
@@ -380,6 +411,11 @@ code {
 }
 
 @media (max-width: 575.98px) {
+    .rts-brand {
+        width: 14rem;
+        height: 3rem;
+    }
+
     .rts-navigation {
         flex-direction: column;
         gap: 0.75rem;
@@ -388,6 +424,12 @@ code {
     .rts-account-navigation {
         width: 100%;
         text-align: left;
+    }
+
+    .rts-header-actions {
+        width: 100%;
+        align-items: flex-start;
+        justify-content: flex-start;
     }
 
     .account-navigation {
