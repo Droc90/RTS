@@ -1,0 +1,102 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Web
+@using RTS.Application.Auditing
+@using RTS.Web.Identity
+
+@inherits ErrorBoundaryBase
+
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IServiceScopeFactory ScopeFactory
+@inject NavigationManager Navigation
+@inject ILogger<LoggingErrorBoundary> Logger
+
+@if (CurrentException is null)
+{
+    @ChildContent
+}
+else
+{
+    <div class="alert alert-danger" role="alert">
+        <h2>Something went wrong</h2>
+
+        <p>
+            An unexpected error occurred while processing
+            this page.
+        </p>
+
+        @if (_correlationId.HasValue)
+        {
+            <p class="mb-3">
+                If you contact support, provide this reference:
+                <code>@_correlationId.Value.ToString("D")</code>
+            </p>
+        }
+
+        <a href="/"
+           class="btn btn-primary"
+           data-enhance-nav="false">
+            Return home
+        </a>
+    </div>
+}
+
+@code {
+
+    private Guid? _correlationId;
+
+    protected override async Task OnErrorAsync(
+        Exception exception)
+    {
+        _correlationId = Guid.NewGuid();
+
+        try
+        {
+            Guid? userExternalId = null;
+
+            var authenticationState =
+                await AuthenticationStateProvider
+                    .GetAuthenticationStateAsync();
+
+            if (authenticationState.User
+                .TryGetExternalUserId(
+                    out var externalUserId))
+            {
+                userExternalId = externalUserId;
+            }
+
+            await using var scope =
+                ScopeFactory.CreateAsyncScope();
+
+            var errorService =
+                scope.ServiceProvider
+                    .GetRequiredService<
+                        IApplicationErrorService>();
+
+            var requestUri = new Uri(
+                Navigation.Uri);
+
+            await errorService.RecordAsync(
+                new RecordApplicationErrorRequest(
+                    userExternalId,
+                    _correlationId.Value,
+                    exception.GetType().FullName
+                        ?? exception.GetType().Name,
+                    null,
+                    "An unexpected error occurred.",
+                    exception.ToString(),
+                    exception.Source,
+                    requestUri.PathAndQuery,
+                    null,
+                    500),
+                CancellationToken.None);
+        }
+        catch (Exception loggingException)
+        {
+            Logger.LogError(
+                loggingException,
+                "Unable to persist Blazor error for " +
+                "correlation ID {CorrelationId}.",
+                _correlationId);
+        }
+    }
+}

@@ -1,0 +1,220 @@
+﻿@page "/account/register"
+
+@using RTS.Application.Identity
+@using RTS.Contracts.Identity
+@using RTS.Web.Components.Account.Models
+
+@inject IUserRegistrationService UserRegistrationService
+@inject IEmailConfirmationService EmailConfirmationService
+@inject NavigationManager Navigation
+@inject ILogger<Register> Logger
+
+<PageTitle>Create account</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6 col-xl-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4 p-lg-5">
+                <h1 class="h2">Create account</h1>
+
+                @if (_accountCreatedWithoutEmail)
+                {
+                    <div class="alert alert-warning"
+                         role="alert"
+                         aria-live="assertive">
+                        <p class="mb-2">
+                            Your account was created, but the
+                            confirmation email could not be sent.
+                        </p>
+
+                        <p class="mb-0">
+                            Request another message using the
+                            resend-confirmation page.
+                        </p>
+                    </div>
+
+                    <a class="btn btn-primary w-100"
+                       href="/account/resend-confirmation">
+                        Resend confirmation email
+                    </a>
+                }
+                else
+                {
+                    @if (_errors.Count > 0)
+                    {
+                        <div class="alert alert-danger"
+                             role="alert"
+                             aria-live="assertive">
+                            <p class="fw-semibold mb-2">
+                                The account could not be created:
+                            </p>
+
+                            <ul class="mb-0">
+                                @foreach (var error in _errors)
+                                {
+                                    <li>@error</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+
+                    <EditForm Model="_model"
+                              OnValidSubmit="RegisterAsync"
+                              FormName="register">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="mb-3">
+                            <label for="register-email"
+                                   class="form-label required-field">
+                                Email address
+                            </label>
+
+                            <InputText id="register-email"
+                                       class="form-control"
+                                       @bind-Value="_model.Email"
+                                       autocomplete="email"
+                                       inputmode="email"
+                                       aria-required="true" />
+
+                            <ValidationMessage For="@(() => _model.Email)" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="register-password"
+                                   class="form-label required-field">
+                                Password
+                            </label>
+
+                            <InputText id="register-password"
+                                       class="form-control"
+                                       type="password"
+                                       @bind-Value="_model.Password"
+                                       autocomplete="new-password"
+                                       aria-required="true"
+                                       aria-describedby="password-help" />
+
+                            <div id="password-help"
+                                 class="form-text">
+                                Use at least 10 characters with
+                                uppercase, lowercase, number, and
+                                special-character combinations.
+                            </div>
+
+                            <ValidationMessage For="@(() => _model.Password)" />
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="register-confirm-password"
+                                   class="form-label required-field">
+                                Confirm password
+                            </label>
+
+                            <InputText id="register-confirm-password"
+                                       class="form-control"
+                                       type="password"
+                                       @bind-Value="_model.ConfirmPassword"
+                                       autocomplete="new-password"
+                                       aria-required="true" />
+
+                            <ValidationMessage For="@(() => _model.ConfirmPassword)" />
+                        </div>
+
+                        <button type="submit"
+                                class="btn btn-primary w-100"
+                                disabled="@_isSubmitting">
+                            @(_isSubmitting
+                                ? "Creating account..."
+                                : "Create account")
+                        </button>
+                    </EditForm>
+
+                    <div class="border-top mt-4 pt-4 text-center">
+                        Already have an account?
+                        <a href="/account/login">
+                            Log in
+                        </a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly RegisterModel _model = new();
+
+    private IReadOnlyCollection<string> _errors =
+        Array.Empty<string>();
+
+    private bool _isSubmitting;
+    private bool _accountCreatedWithoutEmail;
+
+    private async Task RegisterAsync()
+    {
+        _isSubmitting = true;
+        _errors = Array.Empty<string>();
+
+        try
+        {
+            var request = new RegisterUserRequest(
+                _model.Email,
+                _model.Password);
+
+            var result =
+                await UserRegistrationService
+                    .RegisterAsync(request);
+
+            if (!result.Succeeded)
+            {
+                _errors = result.Errors;
+                return;
+            }
+
+            if (result.UserExternalId is not
+                Guid userExternalId)
+            {
+                _errors =
+                [
+                    "The account was created, but its identifier " +
+                    "was not returned."
+                ];
+
+                return;
+            }
+
+            var confirmationPageUri =
+                Navigation.ToAbsoluteUri(
+                    "account/confirm-email");
+
+            try
+            {
+                await EmailConfirmationService
+                    .SendConfirmationAsync(
+                        userExternalId,
+                        confirmationPageUri);
+            }
+            catch (Exception exception)
+            {
+                Logger.LogError(
+                    exception,
+                    "Confirmation email delivery failed for " +
+                    "user {ExternalUserId}.",
+                    userExternalId);
+
+                _accountCreatedWithoutEmail = true;
+                return;
+            }
+
+            Navigation.NavigateTo(
+                "/account/login" +
+                "?registered=true" +
+                "&confirmationSent=true",
+                forceLoad: true);
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+}

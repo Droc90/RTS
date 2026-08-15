@@ -1,0 +1,63 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.Authorization
+
+<AuthorizeView>
+    <Authorized Context="authContext">
+        <div class="account-navigation">
+            <div class="account-links">
+                <a href="/account/profile">
+                    My Profile
+                </a>
+
+                <AuthorizeView Policy="@ApplicationPolicyNames.RequireAdministrator">
+                    <Authorized>
+                        <a href="/admin/users">
+                            User Administration
+                        </a>
+
+                        <a href="/admin/errors">
+                            Application Errors
+                        </a>
+                    </Authorized>
+                </AuthorizeView>
+            </div>
+
+            <div class="account-session">
+                <span class="account-name"
+                      title="@authContext.User.Identity?.Name">
+                    <span class="visually-hidden">
+                        Signed in as
+                    </span>
+
+                    @authContext.User.Identity?.Name
+                </span>
+
+                <form method="post"
+                      action="/account/logout">
+                    <AntiforgeryToken />
+
+                    <input type="hidden"
+                           name="ReturnUrl"
+                           value="/" />
+
+                    <button type="submit"
+                            class="btn btn-link account-logout">
+                        Log out
+                    </button>
+                </form>
+            </div>
+        </div>
+    </Authorized>
+
+    <NotAuthorized>
+        <div class="account-links">
+            <a href="/account/register">
+                Register
+            </a>
+
+            <a href="/account/login">
+                Log in
+            </a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>

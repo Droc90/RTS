@@ -1,0 +1,120 @@
+﻿@page "/"
+
+@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.Authorization
+
+<PageTitle>Home</PageTitle>
+
+<section class="py-4 py-lg-5"
+         aria-labelledby="home-heading">
+    <div class="row align-items-center g-5">
+        <div class="col-lg-7">
+            <p class="text-primary fw-semibold mb-2">
+                Ranked Trading System
+            </p>
+
+            <h1 id="home-heading"
+                class="display-5 fw-bold">
+                A platform for disciplined trading decisions.
+            </h1>
+
+            <p class="lead text-body-secondary mb-4">
+                Bring ranked trading models, analysis, and operational
+                workflows together in one secure system. RTS is designed
+                to grow beyond any single model as new trading capabilities
+                are introduced.
+            </p>
+
+            <div class="d-flex flex-wrap gap-2">
+                <AuthorizeView>
+                    <Authorized>
+                        <a href="/account/profile"
+                           class="btn btn-primary btn-lg">
+                            View my profile
+                        </a>
+                    </Authorized>
+
+                    <NotAuthorized>
+                        <a href="/account/register"
+                           class="btn btn-primary btn-lg">
+                            Create an account
+                        </a>
+
+                        <a href="/account/login"
+                           class="btn btn-outline-secondary btn-lg">
+                            Log in
+                        </a>
+                    </NotAuthorized>
+                </AuthorizeView>
+
+                <AuthorizeView Policy="@ApplicationPolicyNames.RequireAdministrator">
+                    <Authorized>
+                        <a href="/admin/users"
+                           class="btn btn-outline-secondary btn-lg">
+                            Manage users
+                        </a>
+                    </Authorized>
+                </AuthorizeView>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4 p-lg-5">
+                    <h2 class="h4 mb-4">
+                        Platform foundation
+                    </h2>
+
+                    <ul class="list-unstyled mb-0">
+                        <li class="d-flex gap-3 mb-3">
+                            <span class="text-success fw-bold"
+                                  aria-hidden="true">
+                                ✓
+                            </span>
+
+                            <span>
+                                Secure account access and recovery
+                            </span>
+                        </li>
+
+                        <li class="d-flex gap-3 mb-3">
+                            <span class="text-success fw-bold"
+                                  aria-hidden="true">
+                                ✓
+                            </span>
+
+                            <span>
+                                Role-based authorization and user
+                                administration
+                            </span>
+                        </li>
+
+                        <li class="d-flex gap-3 mb-3">
+                            <span class="text-success fw-bold"
+                                  aria-hidden="true">
+                                ✓
+                            </span>
+
+                            <span>
+                                Auditing and application-error
+                                monitoring
+                            </span>
+                        </li>
+
+                        <li class="d-flex gap-3">
+                            <span class="text-success fw-bold"
+                                  aria-hidden="true">
+                                ✓
+                            </span>
+
+                            <span>
+                                A modular foundation for ranked models
+                                and trading workflows
+                            </span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

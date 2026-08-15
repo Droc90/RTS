@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <UserSecretsId>8938bb89-96f0-4db2-87c8-ed508f5be8d9</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RTS.Application\RTS.Application.csproj" />
+    <ProjectReference Include="..\RTS.Contracts\RTS.Contracts.csproj" />
+    <ProjectReference Include="..\RTS.Infrastructure\RTS.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

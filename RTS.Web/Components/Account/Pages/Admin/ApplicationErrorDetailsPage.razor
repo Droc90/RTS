@@ -1,0 +1,447 @@
+﻿@page "/admin/errors/{ExternalId:guid}"
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.Auditing
+@using RTS.Application.Authorization
+@using RTS.Contracts.Auditing
+@using RTS.Web.Components.Account.Models
+@using RTS.Web.Identity
+
+@attribute [Authorize(
+    Policy =
+        ApplicationPolicyNames.RequireAdministrator)]
+
+@inject IApplicationErrorAdministrationService ApplicationErrorAdministrationService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Application error details</PageTitle>
+
+<div class="d-flex flex-wrap gap-3
+            justify-content-between align-items-start mb-4">
+    <div>
+        <h1>Application error details</h1>
+
+        <p class="text-body-secondary mb-0">
+            Review private diagnostics and update the
+            resolution state.
+        </p>
+    </div>
+
+    <a href="/admin/errors"
+       class="btn btn-outline-secondary">
+        Back to errors
+    </a>
+</div>
+
+@if (_isLoading)
+{
+    <div role="status"
+         aria-live="polite">
+        <span class="spinner-border spinner-border-sm me-2"
+              aria-hidden="true">
+        </span>
+
+        Loading application error...
+    </div>
+}
+else if (!string.IsNullOrWhiteSpace(_loadErrorMessage))
+{
+    <div class="alert alert-danger"
+         role="alert"
+         aria-live="assertive">
+        @_loadErrorMessage
+    </div>
+}
+else if (_error is null)
+{
+    <div class="alert alert-warning"
+         role="alert">
+        The requested application error was not found.
+    </div>
+}
+else
+{
+    @if (!string.IsNullOrWhiteSpace(_statusMessage))
+    {
+        <div class="alert @StatusCssClass"
+             role="@StatusRole"
+             aria-live="@StatusLiveRegion">
+            @_statusMessage
+        </div>
+    }
+
+    <div class="row g-4">
+        <div class="col-xl-8">
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-body">
+                    <h2 class="h4 mb-0">
+                        Error information
+                    </h2>
+                </div>
+
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-md-4">
+                            Occurred UTC
+                        </dt>
+                        <dd class="col-md-8">
+                            @_error.OccurredUtc.ToString(
+                                "yyyy-MM-dd HH:mm:ss.fff")
+                        </dd>
+
+                        <dt class="col-md-4">
+                            Error type
+                        </dt>
+                        <dd class="col-md-8">
+                            <code>@_error.ErrorType</code>
+                        </dd>
+
+                        <dt class="col-md-4">
+                            Error code
+                        </dt>
+                        <dd class="col-md-8">
+                            @DisplayValue(_error.ErrorCode)
+                        </dd>
+
+                        <dt class="col-md-4">
+                            Correlation ID
+                        </dt>
+                        <dd class="col-md-8">
+                            @if (_error.CorrelationId.HasValue)
+                            {
+                                <code>
+                                    @_error.CorrelationId.Value
+                                        .ToString("D")
+                                </code>
+                            }
+                            else
+                            {
+                                <span>Not available</span>
+                            }
+                        </dd>
+
+                        <dt class="col-md-4">
+                            User
+                        </dt>
+                        <dd class="col-md-8">
+                            @DisplayValue(_error.UserEmail)
+                        </dd>
+
+                        <dt class="col-md-4">
+                            Source
+                        </dt>
+                        <dd class="col-md-8">
+                            @DisplayValue(_error.Source)
+                        </dd>
+
+                        <dt class="col-md-4">
+                            Request
+                        </dt>
+                        <dd class="col-md-8">
+                            <span>
+                                @DisplayValue(_error.HttpMethod)
+                            </span>
+
+                            <span class="ms-2">
+                                @DisplayValue(_error.RequestPath)
+                            </span>
+                        </dd>
+
+                        <dt class="col-md-4">
+                            HTTP status
+                        </dt>
+                        <dd class="col-md-8">
+                            @(_error.StatusCode?.ToString()
+                                ?? "Not available")
+                        </dd>
+
+                        <dt class="col-md-4">
+                            Safe message
+                        </dt>
+                        <dd class="col-md-8">
+                            @DisplayValue(_error.SafeMessage)
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-body">
+                    <h2 class="h4 mb-0">
+                        Private diagnostics
+                    </h2>
+                </div>
+
+                <div class="card-body">
+                    @if (string.IsNullOrWhiteSpace(
+                             _error.DiagnosticDetails))
+                    {
+                        <p class="text-body-secondary mb-0">
+                            No diagnostic details were recorded.
+                        </p>
+                    }
+                    else
+                    {
+                        <pre class="bg-body-tertiary border rounded
+                                    p-3 mb-0 overflow-auto"
+                             style="max-height: 32rem; white-space: pre-wrap;">@_error.DiagnosticDetails</pre>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-body">
+                    <h2 class="h4 mb-0">
+                        Resolution
+                    </h2>
+                </div>
+
+                <div class="card-body">
+                    <EditForm Model="_model"
+                              OnValidSubmit="SaveAsync"
+                              FormName="application-error-resolution">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <fieldset disabled="@_isSaving">
+                            <legend class="visually-hidden">
+                                Application error resolution
+                            </legend>
+
+                            <div class="mb-3">
+                                <label for="error-resolution-status"
+                                       class="form-label required-field">
+                                    Resolution status
+                                </label>
+
+                                <InputSelect
+                                    id="error-resolution-status"
+                                    class="form-select"
+                                    @bind-Value="_model.ResolutionStatus"
+                                    aria-required="true">
+                                    @foreach (var status in
+                                        ApplicationErrorResolutionStatuses.All)
+                                    {
+                                        <option value="@status">
+                                            @status
+                                        </option>
+                                    }
+                                </InputSelect>
+                            </div>
+
+                            <div class="mb-4">
+                                <label for="error-resolution-notes"
+                                       class="form-label">
+                                    Resolution notes
+                                </label>
+
+                                <InputTextArea
+                                    id="error-resolution-notes"
+                                    class="form-control"
+                                    rows="8"
+                                    @bind-Value="_model.ResolutionNotes" />
+
+                                <div class="form-text">
+                                    Maximum 2,000 characters.
+                                </div>
+                            </div>
+
+                            <button type="submit"
+                                    class="btn btn-primary w-100"
+                                    disabled="@_isSaving">
+                                @(_isSaving
+                                    ? "Saving..."
+                                    : "Save resolution")
+                            </button>
+                        </fieldset>
+                    </EditForm>
+
+                    @if (_error.ResolvedUtc.HasValue)
+                    {
+                        <hr />
+
+                        <dl class="mb-0">
+                            <dt>Resolved UTC</dt>
+                            <dd>
+                                @_error.ResolvedUtc.Value.ToString(
+                                    "yyyy-MM-dd HH:mm:ss")
+                            </dd>
+
+                            <dt>Resolved by</dt>
+                            <dd class="mb-0">
+                                @DisplayValue(
+                                    _error.ResolvedByUserEmail)
+                            </dd>
+                        </dl>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Guid ExternalId { get; set; }
+
+    private readonly ApplicationErrorResolutionModel
+        _model = new();
+
+    private ApplicationErrorDetails? _error;
+    private Guid _actingUserExternalId;
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private bool _saveSucceeded;
+    private string? _loadErrorMessage;
+    private string? _statusMessage;
+
+    private string StatusCssClass =>
+        _saveSucceeded
+            ? "alert-success"
+            : "alert-danger";
+
+    private string StatusRole =>
+        _saveSucceeded
+            ? "status"
+            : "alert";
+
+    private string StatusLiveRegion =>
+        _saveSucceeded
+            ? "polite"
+            : "assertive";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _isLoading = true;
+        _loadErrorMessage = null;
+        _statusMessage = null;
+
+        try
+        {
+            var authenticationState =
+                await AuthenticationStateProvider
+                    .GetAuthenticationStateAsync();
+
+            if (!authenticationState.User
+                .TryGetExternalUserId(
+                    out _actingUserExternalId))
+            {
+                _loadErrorMessage =
+                    "The administrator account could not be " +
+                    "identified.";
+
+                return;
+            }
+
+            _error =
+                await ApplicationErrorAdministrationService
+                    .GetAsync(ExternalId);
+
+            if (_error is not null)
+            {
+                ApplyError(_error);
+            }
+        }
+        catch
+        {
+            _loadErrorMessage =
+                "The application error could not be loaded.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_error is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _saveSucceeded = false;
+        _statusMessage = null;
+
+        try
+        {
+            var result =
+                await ApplicationErrorAdministrationService
+                    .UpdateAsync(
+                        _error.ExternalId,
+                        _actingUserExternalId,
+                        new UpdateApplicationErrorRequest(
+                            _model.ResolutionStatus,
+                            _model.ResolutionNotes,
+                            _model.RowVersion));
+
+            if (result.Succeeded &&
+                result.Error is not null)
+            {
+                _error = result.Error;
+                ApplyError(result.Error);
+
+                _saveSucceeded = true;
+                _statusMessage =
+                    "The application-error resolution was saved.";
+
+                return;
+            }
+
+            _statusMessage =
+                result.ErrorCode switch
+                {
+                    "ConcurrencyConflict" =>
+                        "This error was changed by another " +
+                        "administrator. Reload the page and try again.",
+
+                    "InvalidResolutionStatus" =>
+                        "Select a valid resolution status.",
+
+                    "ResolutionNotesTooLong" =>
+                        "Resolution notes cannot exceed " +
+                        "2,000 characters.",
+
+                    "InvalidAdministrator" =>
+                        "Administrator access could not be verified.",
+
+                    _ =>
+                        "The application-error resolution " +
+                        "could not be saved."
+                };
+        }
+        catch
+        {
+            _statusMessage =
+                "The application-error resolution could not " +
+                "be saved.";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void ApplyError(
+        ApplicationErrorDetails error)
+    {
+        _model.ResolutionStatus =
+            error.ResolutionStatus;
+
+        _model.ResolutionNotes =
+            error.ResolutionNotes;
+
+        _model.RowVersion =
+            error.RowVersion.ToArray();
+    }
+
+    private static string DisplayValue(
+        string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? "Not available"
+            : value;
+}

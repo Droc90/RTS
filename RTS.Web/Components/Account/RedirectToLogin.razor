@@ -1,0 +1,22 @@
+﻿@inject NavigationManager Navigation
+
+<p>Redirecting to login...</p>
+
+@code {
+    protected override void OnInitialized()
+    {
+        var relativePath =
+            Navigation.ToBaseRelativePath(Navigation.Uri);
+
+        var returnUrl = string.IsNullOrWhiteSpace(relativePath)
+            ? "/"
+            : $"/{relativePath}";
+
+        var encodedReturnUrl =
+            Uri.EscapeDataString(returnUrl);
+
+        Navigation.NavigateTo(
+            $"/account/login?returnUrl={encodedReturnUrl}",
+            forceLoad: true);
+    }
+}

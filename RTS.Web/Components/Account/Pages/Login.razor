@@ -1,0 +1,158 @@
+﻿@page "/account/login"
+
+@using Microsoft.AspNetCore.Components
+
+<PageTitle>Log in</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6 col-xl-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4 p-lg-5">
+                <h1 class="h2">Log in</h1>
+
+                @if (Registered)
+                {
+                    <div class="alert alert-success"
+                         role="status"
+                         aria-live="polite">
+                        <p class="mb-1">
+                            Your account was created
+                            successfully.
+                        </p>
+
+                        <p class="mb-0">
+                            Check your email and confirm your
+                            address before logging in.
+                        </p>
+                    </div>
+                }
+                else if (ConfirmationSent)
+                {
+                    <div class="alert alert-success"
+                         role="status"
+                         aria-live="polite">
+                        If an eligible account exists, a
+                        confirmation message has been sent.
+                    </div>
+                }
+
+                @if (Error == "invalid")
+                {
+                    <div class="alert alert-danger"
+                         role="alert"
+                         aria-live="assertive">
+                        The email address or password is
+                        incorrect, or the account is not yet
+                        available for login.
+                    </div>
+                }
+                else if (Error == "locked")
+                {
+                    <div class="alert alert-danger"
+                         role="alert"
+                         aria-live="assertive">
+                        This account is temporarily locked.
+                        Please try again later.
+                    </div>
+                }
+
+                <form method="post"
+                      action="/account/login/submit">
+                    <AntiforgeryToken />
+
+                    <input type="hidden"
+                           name="ReturnUrl"
+                           value="@ReturnUrl" />
+
+                    <div class="mb-3">
+                        <label for="login-email"
+                               class="form-label">
+                            Email address
+                        </label>
+
+                        <input id="login-email"
+                               name="Email"
+                               type="email"
+                               class="form-control"
+                               autocomplete="username"
+                               inputmode="email"
+                               required
+                               autofocus />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="login-password"
+                               class="form-label">
+                            Password
+                        </label>
+
+                        <input id="login-password"
+                               name="Password"
+                               type="password"
+                               class="form-control"
+                               autocomplete="current-password"
+                               required />
+                    </div>
+
+                    <div class="form-check mb-4">
+                        <input id="remember-me"
+                               name="RememberMe"
+                               type="checkbox"
+                               value="true"
+                               class="form-check-input" />
+
+                        <label for="remember-me"
+                               class="form-check-label">
+                            Remember me
+                        </label>
+                    </div>
+
+                    <button type="submit"
+                            class="btn btn-primary w-100">
+                        Log in
+                    </button>
+                </form>
+
+                <div class="border-top mt-4 pt-4">
+                    <p class="mb-2">
+                        <a href="/account/forgot-password">
+                            Forgot your password?
+                        </a>
+                    </p>
+
+                    <p class="mb-2">
+                        <a href="/account/resend-confirmation">
+                            Didn’t receive a confirmation email?
+                        </a>
+                    </p>
+
+                    <p class="mb-0">
+                        Don’t have an account?
+                        <a href="/account/register">
+                            Create one
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "registered")]
+    public bool Registered { get; set; }
+
+    [SupplyParameterFromQuery(Name = "confirmationSent")]
+    public bool ConfirmationSent { get; set; }
+
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? RequestedReturnUrl { get; set; }
+
+    private string ReturnUrl =>
+        string.IsNullOrWhiteSpace(RequestedReturnUrl)
+            ? "/"
+            : RequestedReturnUrl;
+}

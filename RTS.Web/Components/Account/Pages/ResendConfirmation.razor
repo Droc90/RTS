@@ -1,0 +1,137 @@
+﻿@page "/account/resend-confirmation"
+
+@using Microsoft.AspNetCore.Authorization
+@using RTS.Application.Identity
+@using RTS.Web.Components.Account.Models
+
+@attribute [AllowAnonymous]
+
+@inject IEmailConfirmationService EmailConfirmationService
+@inject NavigationManager Navigation
+@inject ILogger<ResendConfirmation> Logger
+
+<PageTitle>Resend confirmation email</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6 col-xl-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4 p-lg-5">
+                <h1 class="h2">
+                    Resend confirmation email
+                </h1>
+
+                @if (_submitted)
+                {
+                    <div class="alert alert-success"
+                         role="status"
+                         aria-live="polite">
+                        If an eligible account exists for that
+                        email address, a confirmation message
+                        has been sent.
+                    </div>
+
+                    <a href="/account/login"
+                       class="btn btn-primary w-100">
+                        Back to login
+                    </a>
+                }
+                else
+                {
+                    @if (!string.IsNullOrWhiteSpace(
+                            _errorMessage))
+                    {
+                        <div class="alert alert-danger"
+                             role="alert"
+                             aria-live="assertive">
+                            @_errorMessage
+                        </div>
+                    }
+
+                    <p class="text-body-secondary">
+                        Enter your email address and we’ll send
+                        another confirmation link if the account
+                        is eligible.
+                    </p>
+
+                    <EditForm Model="_model"
+                              OnValidSubmit="SendAsync"
+                              FormName="resend-confirmation">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="mb-4">
+                            <label for="confirmation-email"
+                                   class="form-label required-field">
+                                Email address
+                            </label>
+
+                            <InputText id="confirmation-email"
+                                       class="form-control"
+                                       @bind-Value="_model.Email"
+                                       autocomplete="email"
+                                       inputmode="email"
+                                       aria-required="true" />
+
+                        </div>
+
+                        <button type="submit"
+                                class="btn btn-primary w-100"
+                                disabled="@_isSubmitting">
+                            @(_isSubmitting
+                                ? "Sending..."
+                                : "Resend confirmation email")
+                        </button>
+                    </EditForm>
+
+                    <div class="border-top mt-4 pt-4 text-center">
+                        <a href="/account/login">
+                            Back to login
+                        </a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly ResendConfirmationModel _model = new();
+
+    private bool _isSubmitting;
+    private bool _submitted;
+    private string? _errorMessage;
+
+    private async Task SendAsync()
+    {
+        _isSubmitting = true;
+        _errorMessage = null;
+
+        try
+        {
+            var confirmationPageUri =
+                Navigation.ToAbsoluteUri(
+                    "account/confirm-email");
+
+            await EmailConfirmationService
+                .SendConfirmationForEmailAsync(
+                    _model.Email,
+                    confirmationPageUri);
+
+            _submitted = true;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(
+                exception,
+                "Confirmation-email delivery failed.");
+
+            _errorMessage =
+                "The request could not be processed right now. " +
+                "Please try again later.";
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+}

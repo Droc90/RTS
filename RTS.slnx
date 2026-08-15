@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="RTS.Application.Tests/RTS.Application.Tests.csproj" />
+  <Project Path="RTS.Application/RTS.Application.csproj" />
+  <Project Path="RTS.Contracts/RTS.Contracts.csproj" />
+  <Project Path="RTS.Domain/RTS.Domain.csproj" />
+  <Project Path="RTS.Infrastructure/RTS.Infrastructure.csproj" />
+  <Project Path="RTS.Integration.Tests/RTS.Integration.Tests.csproj" Id="09e3f54c-13b1-42d7-9462-e89b919f0187" />
+  <Project Path="RTS.Web/RTS.Web.csproj" />
+</Solution>

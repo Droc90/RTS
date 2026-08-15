@@ -1,0 +1,45 @@
+﻿@inherits LayoutComponentBase
+
+<a class="skip-link"
+   href="#main-content">
+    Skip to main content
+</a>
+
+<header class="rts-header">
+    <nav class="container rts-navigation"
+         aria-label="Primary navigation">
+        <a href="/"
+           class="rts-brand"
+           aria-label="Ranked Trading System home">
+            Ranked Trading System
+        </a>
+
+        <div class="rts-account-navigation">
+            <LoginDisplay />
+        </div>
+    </nav>
+</header>
+
+<main id="main-content"
+      class="container rts-main-content"
+      tabindex="-1">
+    @Body
+</main>
+
+<div id="blazor-error-ui"
+     role="alert"
+     aria-live="assertive"
+     data-nosnippet>
+    An unexpected error occurred.
+
+    <a href="."
+       class="reload">
+        Reload
+    </a>
+
+    <button type="button"
+            class="dismiss"
+            aria-label="Dismiss error message">
+        &times;
+    </button>
+</div>

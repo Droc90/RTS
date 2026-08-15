@@ -1,0 +1,336 @@
+﻿@page "/admin/errors"
+
+@using Microsoft.AspNetCore.Authorization
+@using RTS.Application.Auditing
+@using RTS.Application.Authorization
+@using RTS.Contracts.Auditing
+
+@attribute [Authorize(
+    Policy =
+        ApplicationPolicyNames.RequireAdministrator)]
+
+@inject IApplicationErrorAdministrationService ApplicationErrorAdministrationService
+
+<PageTitle>Application errors</PageTitle>
+
+<div class="d-flex flex-wrap gap-3
+            justify-content-between align-items-start mb-4">
+    <div>
+        <h1>Application errors</h1>
+
+        <p class="text-body-secondary mb-0">
+            Review application failures and track their
+            resolution.
+        </p>
+    </div>
+
+    <a href="/admin/users"
+       class="btn btn-outline-secondary">
+        User administration
+    </a>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <EditForm Model="_searchModel"
+                  OnValidSubmit="SearchAsync"
+                  FormName="application-error-search">
+            <div class="row g-3 align-items-end">
+                <div class="col-lg-7">
+                    <label for="error-search"
+                           class="form-label">
+                        Search
+                    </label>
+
+                    <input id="error-search"
+                           class="form-control"
+                           placeholder="Type, code, path, source, or GUID"
+                           @bind="_searchModel.SearchTerm" />
+                </div>
+
+                <div class="col-sm-7 col-lg-3">
+                    <label for="resolution-status"
+                           class="form-label">
+                        Resolution status
+                    </label>
+
+                    <select id="resolution-status"
+                            class="form-select"
+                            @bind="_searchModel.ResolutionStatus">
+                        <option value="">
+                            All statuses
+                        </option>
+
+                        @foreach (var status in
+                            ApplicationErrorResolutionStatuses.All)
+                        {
+                            <option value="@status">
+                                @status
+                            </option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-sm-5 col-lg-2 d-grid">
+                    <button type="submit"
+                            class="btn btn-primary"
+                            disabled="@_isLoading">
+                        Search
+                    </button>
+                </div>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <div class="alert alert-danger"
+         role="alert"
+         aria-live="assertive">
+        @_errorMessage
+    </div>
+}
+else if (_isLoading)
+{
+    <div role="status"
+         aria-live="polite">
+        <span class="spinner-border spinner-border-sm me-2"
+              aria-hidden="true">
+        </span>
+
+        Loading application errors...
+    </div>
+}
+else if (_result is null ||
+         _result.Errors.Count == 0)
+{
+    <div class="alert alert-info"
+         role="status">
+        No application errors were found.
+    </div>
+}
+else
+{
+    <div class="table-responsive mb-3">
+        <table class="table table-striped
+                      table-hover align-middle">
+            <caption class="visually-hidden">
+                Application errors matching the selected
+                search criteria
+            </caption>
+
+            <thead>
+                <tr>
+                    <th scope="col">Occurred UTC</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Request</th>
+                    <th scope="col">Status code</th>
+                    <th scope="col">Resolution</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var error in _result.Errors)
+                {
+                    <tr>
+                        <td class="text-nowrap">
+                            @error.OccurredUtc.ToString(
+                                "yyyy-MM-dd HH:mm:ss")
+                        </td>
+
+                        <td>
+                            <div class="fw-semibold">
+                                @ShortErrorType(error.ErrorType)
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(
+                                     error.ErrorCode))
+                            {
+                                <div class="small text-body-secondary">
+                                    @error.ErrorCode
+                                </div>
+                            }
+                        </td>
+
+                        <td>
+                            <div>
+                                @(string.IsNullOrWhiteSpace(
+                                    error.RequestPath)
+                                    ? "Not available"
+                                    : error.RequestPath)
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(
+                                     error.HttpMethod))
+                            {
+                                <div class="small text-body-secondary">
+                                    @error.HttpMethod
+                                </div>
+                            }
+                        </td>
+
+                        <td>
+                            @(error.StatusCode?.ToString()
+                                ?? "—")
+                        </td>
+
+                        <td>
+                            <span class="badge @GetStatusCssClass(
+                                      error.ResolutionStatus)">
+                                @error.ResolutionStatus
+                            </span>
+                        </td>
+
+                        <td>
+                            <a class="btn btn-sm
+                                      btn-outline-primary"
+                               href="@($"/admin/errors/" +
+                                   $"{error.ExternalId}")">
+                                Details
+                            </a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex flex-wrap gap-3
+                justify-content-between align-items-center">
+        <span>
+            Page @_result.PageNumber of
+            @Math.Max(1, _result.TotalPages)
+            — @_result.TotalCount total errors
+        </span>
+
+        <div class="btn-group"
+             role="group"
+             aria-label="Application error pages">
+            <button class="btn btn-outline-secondary"
+                    disabled="@(_result.PageNumber <= 1)"
+                    @onclick="PreviousPageAsync">
+                Previous
+            </button>
+
+            <button class="btn btn-outline-secondary"
+                    disabled="@(_result.PageNumber >=
+                                _result.TotalPages)"
+                    @onclick="NextPageAsync">
+                Next
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly SearchModel _searchModel = new();
+
+    private ApplicationErrorSearchResult? _result;
+    private bool _isLoading;
+    private string? _errorMessage;
+    private int _pageNumber = 1;
+
+    private const int PageSize = 25;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadErrorsAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _pageNumber = 1;
+        await LoadErrorsAsync();
+    }
+
+    private async Task PreviousPageAsync()
+    {
+        if (_pageNumber <= 1)
+        {
+            return;
+        }
+
+        _pageNumber--;
+        await LoadErrorsAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        if (_result is null ||
+            _pageNumber >= _result.TotalPages)
+        {
+            return;
+        }
+
+        _pageNumber++;
+        await LoadErrorsAsync();
+    }
+
+    private async Task LoadErrorsAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            _result =
+                await ApplicationErrorAdministrationService
+                    .SearchAsync(
+                        new ApplicationErrorSearchRequest(
+                            _searchModel.SearchTerm,
+                            _searchModel.ResolutionStatus,
+                            _pageNumber,
+                            PageSize));
+        }
+        catch
+        {
+            _errorMessage =
+                "The application-error list could not be loaded.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string ShortErrorType(
+        string errorType)
+    {
+        var separatorIndex =
+            errorType.LastIndexOf('.');
+
+        return separatorIndex >= 0 &&
+               separatorIndex < errorType.Length - 1
+            ? errorType[(separatorIndex + 1)..]
+            : errorType;
+    }
+
+    private static string GetStatusCssClass(
+        string status) =>
+        status switch
+        {
+            ApplicationErrorResolutionStatuses.New =>
+                "text-bg-danger",
+
+            ApplicationErrorResolutionStatuses
+                .Investigating =>
+                "text-bg-warning",
+
+            ApplicationErrorResolutionStatuses.Resolved =>
+                "text-bg-success",
+
+            ApplicationErrorResolutionStatuses.Ignored =>
+                "text-bg-secondary",
+
+            _ => "text-bg-light"
+        };
+
+    private sealed class SearchModel
+    {
+        public string? SearchTerm { get; set; }
+
+        public string? ResolutionStatus { get; set; }
+    }
+}

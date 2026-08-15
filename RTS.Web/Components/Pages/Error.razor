@@ -1,0 +1,66 @@
+﻿@page "/Error"
+
+@using RTS.Web.Middleware
+
+<PageTitle>Something went wrong</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4 p-lg-5 text-center">
+                <div class="display-4 text-danger mb-3"
+                     aria-hidden="true">
+                    !
+                </div>
+
+                <h1 class="h2">
+                    Something went wrong
+                </h1>
+
+                <p class="text-body-secondary">
+                    An unexpected error occurred while
+                    processing your request. Please try again.
+                </p>
+
+                @if (CorrelationId.HasValue)
+                {
+                    <div class="alert alert-light border"
+                         role="status">
+                        <p class="mb-1">
+                            If you contact support, provide this
+                            reference:
+                        </p>
+
+                        <code>
+                            @CorrelationId.Value.ToString("D")
+                        </code>
+                    </div>
+                }
+
+                <a href="/"
+                   class="btn btn-primary">
+                    Return to the home page
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private Guid? CorrelationId { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (HttpContext?.Items.TryGetValue(
+                ApplicationErrorLoggingMiddleware
+                    .CorrelationItemKey,
+                out var value) == true &&
+            value is Guid correlationId)
+        {
+            CorrelationId = correlationId;
+        }
+    }
+}

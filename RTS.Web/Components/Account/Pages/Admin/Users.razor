@@ -1,0 +1,217 @@
+﻿@page "/admin/users"
+
+@using Microsoft.AspNetCore.Authorization
+@using RTS.Application.Administration
+@using RTS.Contracts.Administration
+@using RTS.Application.Authorization
+
+@attribute [Authorize(
+    Policy =
+        ApplicationPolicyNames.RequireAdministrator)]
+
+@inject IUserAdministrationService UserAdministrationService
+
+<PageTitle>User administration</PageTitle>
+
+<h1>User administration</h1>
+
+<EditForm Model="_searchModel"
+          OnValidSubmit="SearchAsync"
+          FormName="user-search">
+    <div class="row g-2 mb-4">
+        <div class="col-sm-8 col-md-6">
+            <input class="form-control"
+                   placeholder="Search by email"
+                   @bind="_searchModel.SearchTerm" />
+        </div>
+
+        <div class="col-auto">
+            <button type="submit"
+                    class="btn btn-primary"
+                    disabled="@_isLoading">
+                Search
+            </button>
+        </div>
+    </div>
+</EditForm>
+
+@if (!string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <div class="alert alert-danger">
+        @_errorMessage
+    </div>
+}
+else if (_isLoading)
+{
+    <p>Loading users...</p>
+}
+else if (_result is null || _result.Users.Count == 0)
+{
+    <div class="alert alert-info">
+        No users were found.
+    </div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Roles</th>
+                    <th>Created</th>
+                    <th>Last login</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in _result.Users)
+                {
+                    <tr>
+                        <td>@user.Email</td>
+                        <td>
+                            @if (user.IsDeleted)
+                            {
+                                <span class="badge text-bg-dark">
+                                    Deleted
+                                </span>
+                            }
+                            else if (!user.IsActive)
+                            {
+                                <span class="badge text-bg-warning">
+                                    Inactive
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="badge text-bg-success">
+                                    Active
+                                </span>
+                            }
+                        </td>
+                        <td>
+                            @(user.Roles.Count == 0
+                                ? "None"
+                                : string.Join(", ", user.Roles))
+                        </td>
+                        <td>
+                            @user.CreatedUtc.ToString(
+                                "yyyy-MM-dd HH:mm")
+                        </td>
+                        <td>
+                            @(user.LastLoginUtc.HasValue
+                                ? user.LastLoginUtc.Value.ToString(
+                                    "yyyy-MM-dd HH:mm")
+                                : "Never")
+                        </td>
+                        <td>
+                            <a class="btn btn-sm btn-outline-primary"
+                               href="@($"/admin/users/{user.ExternalId}")">
+                                Details
+                            </a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center">
+        <span>
+            Page @_result.PageNumber of
+            @Math.Max(1, _result.TotalPages)
+            — @_result.TotalCount total users
+        </span>
+
+        <div class="btn-group">
+            <button class="btn btn-outline-secondary"
+                    disabled="@(_result.PageNumber <= 1)"
+                    @onclick="PreviousPageAsync">
+                Previous
+            </button>
+
+            <button class="btn btn-outline-secondary"
+                    disabled="@(_result.PageNumber >=
+                                                _result.TotalPages)"
+                    @onclick="NextPageAsync">
+                Next
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly SearchModel _searchModel = new();
+    private UserSearchResult? _result;
+    private bool _isLoading;
+    private string? _errorMessage;
+    private int _pageNumber = 1;
+    private const int PageSize = 25;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsersAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _pageNumber = 1;
+        await LoadUsersAsync();
+    }
+
+    private async Task PreviousPageAsync()
+    {
+        if (_pageNumber <= 1)
+        {
+            return;
+        }
+
+        _pageNumber--;
+        await LoadUsersAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        if (_result is null ||
+            _pageNumber >= _result.TotalPages)
+        {
+            return;
+        }
+
+        _pageNumber++;
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            var request = new UserSearchRequest(
+                _searchModel.SearchTerm,
+                _pageNumber,
+                PageSize);
+
+            _result =
+                await UserAdministrationService
+                    .SearchUsersAsync(request);
+        }
+        catch
+        {
+            _errorMessage =
+                "The user list could not be loaded.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private sealed class SearchModel
+    {
+        public string? SearchTerm { get; set; }
+    }
+}

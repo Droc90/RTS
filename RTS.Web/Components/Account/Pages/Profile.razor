@@ -1,0 +1,341 @@
+﻿@page "/account/profile"
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.Authorization
+@using RTS.Application.Profiles
+@using RTS.Contracts.Profiles
+@using RTS.Web.Components.Account.Models
+@using RTS.Web.Identity
+
+@attribute [Authorize(
+    Policy =
+        ApplicationPolicyNames.RequireAuthenticatedUser)]
+
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IUserProfileService UserProfileService
+
+<PageTitle>My profile</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-lg-9 col-xl-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4 p-lg-5">
+                <h1 class="h2">My profile</h1>
+
+                <p class="text-body-secondary">
+                    Manage your personal details and display
+                    preferences.
+                </p>
+
+                @if (_isLoading)
+                {
+                    <div role="status"
+                         aria-live="polite">
+                        <span class="spinner-border spinner-border-sm me-2"
+                              aria-hidden="true">
+                        </span>
+
+                        Loading your profile...
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(
+                             _loadErrorMessage))
+                {
+                    <div class="alert alert-danger"
+                         role="alert"
+                         aria-live="assertive">
+                        @_loadErrorMessage
+                    </div>
+                }
+                else
+                {
+                    @if (!string.IsNullOrWhiteSpace(
+                             _statusMessage))
+                    {
+                        <div class="alert @StatusCssClass"
+                             role="@StatusRole"
+                             aria-live="@StatusLiveRegion">
+                            @_statusMessage
+                        </div>
+                    }
+
+                    <EditForm Model="_model"
+                              OnValidSubmit="SaveAsync"
+                              FormName="user-profile">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <fieldset disabled="@_isSaving">
+                            <legend class="visually-hidden">
+                                Profile information
+                            </legend>
+
+                            <div class="mb-3">
+                                <label for="profile-display-name"
+                                       class="form-label">
+                                    Display name
+                                </label>
+
+                                <InputText
+                                    id="profile-display-name"
+                                    class="form-control"
+                                    @bind-Value="_model.DisplayName"
+                                    autocomplete="nickname" />
+
+                                <ValidationMessage
+                                    For="@(() => _model.DisplayName)" />
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="profile-first-name"
+                                           class="form-label">
+                                        First name
+                                    </label>
+
+                                    <InputText
+                                        id="profile-first-name"
+                                        class="form-control"
+                                        @bind-Value="_model.FirstName"
+                                        autocomplete="given-name" />
+
+                                    <ValidationMessage
+                                        For="@(() => _model.FirstName)" />
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="profile-last-name"
+                                           class="form-label">
+                                        Last name
+                                    </label>
+
+                                    <InputText
+                                        id="profile-last-name"
+                                        class="form-control"
+                                        @bind-Value="_model.LastName"
+                                        autocomplete="family-name" />
+
+                                    <ValidationMessage
+                                        For="@(() => _model.LastName)" />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="profile-time-zone"
+                                           class="form-label">
+                                        Time zone
+                                    </label>
+
+                                    <InputText
+                                        id="profile-time-zone"
+                                        class="form-control"
+                                        @bind-Value="_model.TimeZoneId"
+                                        aria-describedby="time-zone-help" />
+
+                                    <div id="time-zone-help"
+                                         class="form-text">
+                                        Example:
+                                        Eastern Standard Time
+                                    </div>
+
+                                    <ValidationMessage
+                                        For="@(() => _model.TimeZoneId)" />
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="profile-locale"
+                                           class="form-label">
+                                        Locale
+                                    </label>
+
+                                    <InputText
+                                        id="profile-locale"
+                                        class="form-control"
+                                        @bind-Value="_model.Locale"
+                                        aria-describedby="locale-help" />
+
+                                    <div id="locale-help"
+                                         class="form-text">
+                                        Example: en-US
+                                    </div>
+
+                                    <ValidationMessage
+                                        For="@(() => _model.Locale)" />
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label for="profile-date-format"
+                                       class="form-label">
+                                    Preferred date format
+                                </label>
+
+                                <InputText
+                                    id="profile-date-format"
+                                    class="form-control"
+                                    @bind-Value="_model.PreferredDateFormat"
+                                    aria-describedby="date-format-help" />
+
+                                <div id="date-format-help"
+                                     class="form-text">
+                                    Example: MM/dd/yyyy
+                                </div>
+
+                                <ValidationMessage
+                                    For="@(() =>
+                                        _model.PreferredDateFormat)" />
+                            </div>
+
+                            <button type="submit"
+                                    class="btn btn-primary"
+                                    disabled="@_isSaving">
+                                @(_isSaving
+                                    ? "Saving..."
+                                    : "Save profile")
+                            </button>
+                        </fieldset>
+                    </EditForm>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly UserProfileModel _model = new();
+
+    private Guid _userExternalId;
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private bool _saveSucceeded;
+    private string? _loadErrorMessage;
+    private string? _statusMessage;
+
+    private string StatusCssClass =>
+        _saveSucceeded
+            ? "alert-success"
+            : "alert-danger";
+
+    private string StatusRole =>
+        _saveSucceeded
+            ? "status"
+            : "alert";
+
+    private string StatusLiveRegion =>
+        _saveSucceeded
+            ? "polite"
+            : "assertive";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authenticationState =
+                await AuthenticationStateProvider
+                    .GetAuthenticationStateAsync();
+
+            if (!authenticationState.User
+                .TryGetExternalUserId(
+                    out _userExternalId))
+            {
+                _loadErrorMessage =
+                    "Your profile could not be identified.";
+
+                return;
+            }
+
+            var profile =
+                await UserProfileService
+                    .GetOrCreateAsync(
+                        _userExternalId);
+
+            ApplyProfile(profile);
+        }
+        catch
+        {
+            _loadErrorMessage =
+                "Your profile could not be loaded.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _saveSucceeded = false;
+        _statusMessage = null;
+
+        try
+        {
+            var result =
+                await UserProfileService.UpdateAsync(
+                    _userExternalId,
+                    new UpdateUserProfileRequest(
+                        _model.DisplayName,
+                        _model.FirstName,
+                        _model.LastName,
+                        _model.TimeZoneId,
+                        _model.Locale,
+                        _model.PreferredDateFormat,
+                        _model.RowVersion));
+
+            if (result.Succeeded &&
+                result.Profile is not null)
+            {
+                ApplyProfile(result.Profile);
+
+                _saveSucceeded = true;
+                _statusMessage =
+                    "Your profile was saved.";
+
+                return;
+            }
+
+            _statusMessage =
+                result.ErrorCode ==
+                    "ConcurrencyConflict"
+                    ? "Your profile was changed elsewhere. " +
+                      "Reload the page and try again."
+                    : "Your profile could not be saved.";
+        }
+        catch
+        {
+            _statusMessage =
+                "Your profile could not be saved.";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void ApplyProfile(
+        UserProfileDetails profile)
+    {
+        _model.DisplayName =
+            profile.DisplayName;
+
+        _model.FirstName =
+            profile.FirstName;
+
+        _model.LastName =
+            profile.LastName;
+
+        _model.TimeZoneId =
+            profile.TimeZoneId;
+
+        _model.Locale =
+            profile.Locale;
+
+        _model.PreferredDateFormat =
+            profile.PreferredDateFormat;
+
+        _model.RowVersion =
+            profile.RowVersion.ToArray();
+    }
+}

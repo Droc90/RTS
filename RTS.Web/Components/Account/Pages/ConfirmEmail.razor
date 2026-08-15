@@ -1,0 +1,125 @@
+﻿@page "/account/confirm-email"
+
+@using Microsoft.AspNetCore.Authorization
+@using RTS.Application.Identity
+
+@attribute [AllowAnonymous]
+
+@inject IEmailConfirmationService EmailConfirmationService
+
+<PageTitle>Confirm email</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6 col-xl-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4 p-lg-5">
+                <h1 class="h2">Confirm email</h1>
+
+                @if (_isProcessing)
+                {
+                    <div role="status"
+                         aria-live="polite">
+                        <span class="spinner-border spinner-border-sm me-2"
+                              aria-hidden="true">
+                        </span>
+
+                        Confirming your email address...
+                    </div>
+                }
+                else if (_succeeded)
+                {
+                    <div class="alert alert-success"
+                         role="status"
+                         aria-live="polite">
+                        Your email address has been confirmed
+                        successfully.
+                    </div>
+
+                    <a class="btn btn-primary w-100"
+                       href="/account/login">
+                        Continue to login
+                    </a>
+                }
+                else
+                {
+                    <div class="alert alert-danger"
+                         role="alert"
+                         aria-live="assertive">
+                        <p class="mb-2">
+                            We could not confirm your email
+                            address.
+                        </p>
+
+                        @if (_errors.Count > 0)
+                        {
+                            <ul class="mb-0">
+                                @foreach (var error in _errors)
+                                {
+                                    <li>@error</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <a class="btn btn-primary"
+                           href="/account/resend-confirmation">
+                            Request another confirmation email
+                        </a>
+
+                        <a class="btn btn-outline-secondary"
+                           href="/account/login">
+                            Back to login
+                        </a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "userId")]
+    public Guid? UserExternalId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "token")]
+    public string? Token { get; set; }
+
+    private IReadOnlyCollection<string> _errors =
+        Array.Empty<string>();
+
+    private bool _isProcessing = true;
+    private bool _succeeded;
+    private bool _hasProcessed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_hasProcessed)
+        {
+            return;
+        }
+
+        _hasProcessed = true;
+
+        if (UserExternalId is not Guid externalUserId ||
+            string.IsNullOrWhiteSpace(Token))
+        {
+            _errors =
+            [
+                "The email-confirmation link is invalid."
+            ];
+
+            _isProcessing = false;
+            return;
+        }
+
+        var result =
+            await EmailConfirmationService.ConfirmAsync(
+                externalUserId,
+                Token);
+
+        _succeeded = result.Succeeded;
+        _errors = result.Errors;
+        _isProcessing = false;
+    }
+}

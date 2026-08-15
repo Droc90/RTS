@@ -1,0 +1,499 @@
+﻿@page "/admin/users/{ExternalId:guid}"
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.Administration
+@using RTS.Application.Identity
+@using RTS.Contracts.Administration
+@using RTS.Web.Identity
+@using RTS.Application.Authorization
+
+@attribute [Authorize(
+    Policy =
+        ApplicationPolicyNames.RequireAdministrator)]
+
+@inject IUserAdministrationService UserAdministrationService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>User details</PageTitle>
+
+<h1>User details</h1>
+
+@if (_isLoading)
+{
+    <p>Loading user...</p>
+}
+else if (!string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <div class="alert alert-danger">
+        @_errorMessage
+    </div>
+
+    <a class="btn btn-outline-secondary"
+       href="/admin/users">
+        Back to users
+    </a>
+}
+else if (_user is null)
+{
+    <div class="alert alert-warning">
+        The requested user was not found.
+    </div>
+
+    <a class="btn btn-outline-secondary"
+       href="/admin/users">
+        Back to users
+    </a>
+}
+else
+{
+    <div class="card mb-4">
+        <div class="card-header d-flex
+            justify-content-between
+            align-items-center">
+            <strong>@_user.Email</strong>
+
+            @if (_user.IsDeleted)
+            {
+                <span class="badge text-bg-dark">
+                    Deleted
+                </span>
+            }
+            else if (!_user.IsActive)
+            {
+                <span class="badge text-bg-warning">
+                    Inactive
+                </span>
+            }
+            else
+            {
+                <span class="badge text-bg-success">
+                    Active
+                </span>
+            }
+        </div>
+
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-4">External ID</dt>
+                <dd class="col-sm-8">
+                    @_user.ExternalId
+                </dd>
+
+                <dt class="col-sm-4">Username</dt>
+                <dd class="col-sm-8">
+                    @_user.UserName
+                </dd>
+
+                <dt class="col-sm-4">Roles</dt>
+                <dd class="col-sm-8">
+                    @if (_user.Roles.Count == 0)
+                    {
+                        <span>None</span>
+                    }
+                    else
+                    {
+                        @foreach (var role in _user.Roles)
+                        {
+                            <span class="badge text-bg-primary me-1">
+                                @role
+                            </span>
+                        }
+                    }
+                </dd>
+
+                <dt class="col-sm-4">Email confirmed</dt>
+                <dd class="col-sm-8">
+                    @(_user.EmailConfirmed ? "Yes" : "No")
+                </dd>
+
+                <dt class="col-sm-4">Phone number</dt>
+                <dd class="col-sm-8">
+                    @(_user.PhoneNumber ?? "Not provided")
+                </dd>
+
+                <dt class="col-sm-4">Phone confirmed</dt>
+                <dd class="col-sm-8">
+                    @(_user.PhoneNumberConfirmed ? "Yes" : "No")
+                </dd>
+
+                <dt class="col-sm-4">Two-factor enabled</dt>
+                <dd class="col-sm-8">
+                    @(_user.TwoFactorEnabled ? "Yes" : "No")
+                </dd>
+
+                <dt class="col-sm-4">Lockout enabled</dt>
+                <dd class="col-sm-8">
+                    @(_user.LockoutEnabled ? "Yes" : "No")
+                </dd>
+
+                <dt class="col-sm-4">Lockout end</dt>
+                <dd class="col-sm-8">
+                    @(_user.LockoutEnd.HasValue
+                        ? _user.LockoutEnd.Value.ToString(
+                            "yyyy-MM-dd HH:mm zzz")
+                        : "Not locked")
+                </dd>
+
+                <dt class="col-sm-4">Failed access count</dt>
+                <dd class="col-sm-8">
+                    @_user.AccessFailedCount
+                </dd>
+
+                <dt class="col-sm-4">Created UTC</dt>
+                <dd class="col-sm-8">
+                    @_user.CreatedUtc.ToString(
+                        "yyyy-MM-dd HH:mm")
+                </dd>
+
+                <dt class="col-sm-4">Modified UTC</dt>
+                <dd class="col-sm-8">
+                    @(_user.ModifiedUtc.HasValue
+                        ? _user.ModifiedUtc.Value.ToString(
+                            "yyyy-MM-dd HH:mm")
+                        : "Never")
+                </dd>
+
+                <dt class="col-sm-4">Last login UTC</dt>
+                <dd class="col-sm-8">
+                    @(_user.LastLoginUtc.HasValue
+                        ? _user.LastLoginUtc.Value.ToString(
+                            "yyyy-MM-dd HH:mm")
+                        : "Never")
+                </dd>
+
+                <dt class="col-sm-4">Deleted UTC</dt>
+                <dd class="col-sm-8">
+                    @(_user.DeletedUtc.HasValue
+                        ? _user.DeletedUtc.Value.ToString(
+                            "yyyy-MM-dd HH:mm")
+                        : "Not deleted")
+                </dd>
+            </dl>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_operationError))
+    {
+        <div class="alert alert-danger">
+            @_operationError
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_operationMessage))
+    {
+        <div class="alert alert-success">
+            @_operationMessage
+        </div>
+    }
+
+    @if (!_user.IsDeleted)
+    {
+        @if (!_user.IsDeleted)
+        {
+            @if (_showStatusConfirmation)
+            {
+                <div class="alert alert-warning">
+                    <p>
+                        Are you sure you want to
+                        @(_user.IsActive ? "deactivate" : "activate")
+                        <strong>@_user.Email</strong>?
+                    </p>
+
+                    <button class="@(_user.IsActive
+                                                ? "btn btn-danger me-2"
+                                                : "btn btn-success me-2")"
+                            disabled="@_isUpdating"
+                            @onclick="ConfirmStatusChangeAsync">
+                        Confirm
+                    </button>
+
+                    <button class="btn btn-outline-secondary"
+                            disabled="@_isUpdating"
+                            @onclick="CancelStatusChange">
+                        Cancel
+                    </button>
+                </div>
+            }
+            else if (_user.IsActive && IsCurrentUser)
+            {
+                <span class="account-action-tooltip"
+                      data-tooltip="You cannot deactivate your own account.">
+                    <button class="btn btn-secondary me-2"
+                            type="button"
+                            disabled>
+                        Deactivate Account
+                    </button>
+                </span>
+            }
+            else
+            {
+                <button class="@(_user.IsActive
+                                        ? "btn btn-danger me-2"
+                                        : "btn btn-success me-2")"
+                        disabled="@_isUpdating"
+                        @onclick="RequestStatusChange">
+                    @(_user.IsActive
+                        ? "Deactivate Account"
+                        : "Activate Account")
+                </button>
+            }
+        }
+    }
+
+    <a class="btn btn-outline-secondary"
+       href="/admin/users">
+        Back to users
+    </a>
+
+    @if (_user.IsActive && !_user.IsDeleted)
+    {
+        @if (_showAdministratorConfirmation)
+        {
+            <div class="alert alert-warning mt-3">
+                <p>
+                    Are you sure you want to
+                    @(IsAdministrator
+                        ? "remove administrator access from"
+                        : "grant administrator access to")
+                    <strong>@_user.Email</strong>?
+                </p>
+
+                <button class="@(
+                        IsAdministrator
+                            ? "btn btn-warning me-2"
+                            : "btn btn-primary me-2")"
+                        disabled="@_isUpdating"
+                        @onclick="ConfirmAdministratorChangeAsync">
+                    Confirm
+                </button>
+
+                <button class="btn btn-outline-secondary"
+                        disabled="@_isUpdating"
+                        @onclick="CancelAdministratorChange">
+                    Cancel
+                </button>
+            </div>
+        }
+        else if (IsAdministrator && IsCurrentUser)
+        {
+            <span class="account-action-tooltip"
+                  data-tooltip="You cannot remove your own administrator access.">
+                <button class="btn btn-secondary me-2"
+                        type="button"
+                        disabled>
+                    Remove Administrator
+                </button>
+            </span>
+        }
+        else
+        {
+            <button class="@(
+                    IsAdministrator
+                        ? "btn btn-warning me-2"
+                        : "btn btn-primary me-2")"
+                    disabled="@_isUpdating"
+                    @onclick="RequestAdministratorChange">
+                @(IsAdministrator
+                    ? "Remove Administrator"
+                    : "Make Administrator")
+            </button>
+        }
+    }
+}
+
+@code {
+    [Parameter]
+    public Guid ExternalId { get; set; }
+
+    private UserDetails? _user;
+    private Guid? _actingUserExternalId;
+    private bool _isLoading;
+    private bool _isUpdating;
+    private bool _showStatusConfirmation;
+    private string? _errorMessage;
+    private string? _operationError;
+    private string? _operationMessage;
+    private bool _showAdministratorConfirmation;
+
+    private bool IsCurrentUser =>
+        _actingUserExternalId.HasValue &&
+        _actingUserExternalId.Value == ExternalId;
+
+    private bool IsAdministrator =>
+    _user?.Roles.Contains(
+        SystemRoleNames.Administrator,
+        StringComparer.OrdinalIgnoreCase) == true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        _operationError = null;
+        _operationMessage = null;
+        _actingUserExternalId = null;
+
+        try
+        {
+            var authenticationState =
+                await AuthenticationStateProvider
+                    .GetAuthenticationStateAsync();
+
+            if (authenticationState.User
+                .TryGetExternalUserId(
+                    out var actingUserExternalId))
+            {
+                _actingUserExternalId =
+                    actingUserExternalId;
+            }
+
+            _user = await UserAdministrationService
+                .GetUserAsync(ExternalId);
+        }
+        catch
+        {
+            _errorMessage =
+                "The user details could not be loaded.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void RequestStatusChange()
+    {
+        _operationError = null;
+        _operationMessage = null;
+        _showStatusConfirmation = true;
+        _showAdministratorConfirmation = false;
+    }
+
+    private void CancelStatusChange()
+    {
+        _showStatusConfirmation = false;
+    }
+
+    private async Task ConfirmStatusChangeAsync()
+    {
+        if (_user is null ||
+            !_actingUserExternalId.HasValue)
+        {
+            _operationError =
+                "The administrator identity could not be verified.";
+
+            _showStatusConfirmation = false;
+            return;
+        }
+
+        _isUpdating = true;
+        _operationError = null;
+        _operationMessage = null;
+
+        var newActiveStatus = !_user.IsActive;
+
+        try
+        {
+            var result = await UserAdministrationService
+                .SetActiveStatusAsync(
+                    _user.ExternalId,
+                    newActiveStatus,
+                    _actingUserExternalId.Value);
+
+            if (!result.Succeeded)
+            {
+                _operationError = string.Join(
+                    " ",
+                    result.Errors);
+
+                return;
+            }
+
+            _user = await UserAdministrationService
+                .GetUserAsync(ExternalId);
+
+            _operationMessage = newActiveStatus
+                ? "The account was activated."
+                : "The account was deactivated.";
+        }
+        catch
+        {
+            _operationError =
+                "The account status could not be updated.";
+        }
+        finally
+        {
+            _isUpdating = false;
+            _showStatusConfirmation = false;
+        }
+    }
+
+    private void RequestAdministratorChange()
+    {
+        _operationError = null;
+        _operationMessage = null;
+        _showStatusConfirmation = false;
+        _showAdministratorConfirmation = true;
+    }
+
+    private void CancelAdministratorChange()
+    {
+        _showAdministratorConfirmation = false;
+    }
+
+    private async Task ConfirmAdministratorChangeAsync()
+    {
+        if (_user is null ||
+            !_actingUserExternalId.HasValue)
+        {
+            _operationError =
+                "The administrator identity could not be verified.";
+
+            _showAdministratorConfirmation = false;
+            return;
+        }
+
+        _isUpdating = true;
+        _operationError = null;
+        _operationMessage = null;
+
+        var newAdministratorStatus = !IsAdministrator;
+
+        try
+        {
+            var result = await UserAdministrationService
+                .SetAdministratorStatusAsync(
+                    _user.ExternalId,
+                    newAdministratorStatus,
+                    _actingUserExternalId.Value);
+
+            if (!result.Succeeded)
+            {
+                _operationError = string.Join(
+                    " ",
+                    result.Errors);
+
+                return;
+            }
+
+            _user = await UserAdministrationService
+                .GetUserAsync(ExternalId);
+
+            _operationMessage = newAdministratorStatus
+                ? "Administrator access was granted. " +
+                  "The user must log in again to receive the new role."
+                : "Administrator access was removed. " +
+                  "The user's authentication credentials were invalidated.";
+        }
+        catch
+        {
+            _operationError =
+                "Administrator access could not be updated.";
+        }
+        finally
+        {
+            _isUpdating = false;
+            _showAdministratorConfirmation = false;
+        }
+    }
+}
