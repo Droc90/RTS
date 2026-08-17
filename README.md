@@ -87,6 +87,7 @@ The shared RTS foundation is complete and ready for product-specific trading mod
 - SQL Server compatibility level 170
 - xUnit v3 3.2.2
 - Bootstrap 5.3.8
+- Radzen.Blazor 11.2.5
 - MailKit 4.17.0
 - Microsoft.Extensions.Diagnostics.HealthChecks 10.0.11
 
@@ -129,6 +130,16 @@ RTS.Infrastructure → RTS.Application → RTS.Domain
 ```
 
 Razor components do not access EF Core, `DbContext`, `UserManager`, or SQL directly. UI components call application-layer interfaces implemented by Infrastructure.
+
+### Runtime Strategy
+
+RTS is a modular monolith. Blazor is the presentation layer; configurable screening rules, chart-scoring logic, and provider-independent use cases remain in the Domain and Application projects.
+
+Long-running market-data ingestion, candidate screening, and chart scoring will execute as durable queued work rather than inside an Interactive Server circuit. Early development may use an in-process hosted service, with a separate `RTS.Worker` host added when workload or operational requirements justify it.
+
+Detailed financial charts may use a specialized JavaScript charting library through an RTS-owned Blazor wrapper. This allows RTS to retain Radzen for general UI components without coupling application logic to Radzen or a particular chart vendor.
+
+See [the architecture document](docs/architecture.md) for the complete boundaries and evolution strategy.
 
 ## Database Design
 
@@ -450,8 +461,23 @@ RTS.Web             → pages, components, and application composition
 
 The `RTS` technical prefix, `RTSDB` database name, `.RTS.Auth` cookie name, and data-protection name identify the overall Ranked Trading System and should remain stable as individual models are added.
 
+## Product Direction
+
+RTS is being developed as a configurable, multi-model evaluation platform. The initial methodology is the first system template rather than the permanent definition of the product.
+
+The planned workflow combines deterministic screening, AI-assisted catalyst discovery, and manual candidates in a Candidate Inbox. Users choose which candidates proceed to durable evaluation jobs. RTS then retrieves market data, generates model-driven charts, calculates indicators and scores, and produces one canonical evidence-backed evaluation.
+
+The same canonical evaluation can be presented as a narrative report, interactive dashboard, or analyst workbench. RTS may initialize presentation using experience, age range, generational preference, accessibility, and explicit settings, then optionally learn from user interaction. Learned presentation preferences never change the underlying facts, rankings, calculations, or scores.
+
+Generative AI assists with structured strategy drafting, cited discovery, grounded explanation, chart interpretation, and approved agentic workflows. Deterministic rules remain authoritative, material state changes require user approval, and autonomous trade execution is outside the product plan.
+
+See [the product, AI, and adaptive-presentation design](docs/product-ai-and-presentation.md) for the complete workflow and boundaries.
+
 ## Future Enhancements
 
+- Add durable background-job persistence and an `RTS.Worker` host as screening and scoring workloads require it
+- Add provider-neutral market-data and historical-price adapters
+- Add specialized financial charting behind an RTS-owned Blazor component wrapper
 - Replace in-memory account-request throttling with a distributed or infrastructure-level limiter when deploying multiple instances
 - Add external monitoring integration and alerting for the health endpoints
 - Expand authorization policies as product-specific permissions are introduced
@@ -464,7 +490,9 @@ Additional design decisions are documented in:
 
 ```text
 docs/architecture.md
+docs/product-ai-and-presentation.md
 docs/production-configuration.md
+docs/RTS development checklist.md
 .github/copilot-instructions.md
 ```
 

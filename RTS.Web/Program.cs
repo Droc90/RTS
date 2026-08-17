@@ -20,6 +20,7 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using RTS.Web.Health;
+using RTS.Application.TradingConfiguration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -236,6 +237,26 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<
     AuthenticationStateProvider,
     AuthenticationStateValidator>();
+
+builder.Services.AddSingleton<
+    IMetricRegistry,
+    MetricRegistry>();
+
+builder.Services.AddSingleton<
+    IIndicatorRegistry,
+    IndicatorRegistry>();
+
+builder.Services.AddSingleton<
+    ITradingConfigurationValidator,
+    TradingConfigurationValidator>();
+
+builder.Services.AddSingleton<
+    ITradingConfigurationTemplateService,
+    TradingConfigurationTemplateService>();
+
+builder.Services.AddSingleton<
+    ITradingConfigurationPublicationService,
+    TradingConfigurationPublicationService>();
 
 var app = builder.Build();
 

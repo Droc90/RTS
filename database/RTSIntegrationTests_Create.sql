@@ -38,6 +38,7 @@ IF SCHEMA_ID(N'Administration') IS NULL EXEC(N'CREATE SCHEMA [Administration] AU
 IF SCHEMA_ID(N'Audit') IS NULL EXEC(N'CREATE SCHEMA [Audit] AUTHORIZATION [dbo];');
 IF SCHEMA_ID(N'Communication') IS NULL EXEC(N'CREATE SCHEMA [Communication] AUTHORIZATION [dbo];');
 IF SCHEMA_ID(N'Storage') IS NULL EXEC(N'CREATE SCHEMA [Storage] AUTHORIZATION [dbo];');
+IF SCHEMA_ID(N'Trading') IS NULL EXEC(N'CREATE SCHEMA [Trading] AUTHORIZATION [dbo];');
 GO
 
 BEGIN TRANSACTION;
@@ -476,6 +477,149 @@ CREATE TABLE [Storage].[StoredFiles]
 );
 
 /* =========================================================
+   Trading
+   ========================================================= */
+
+CREATE TABLE [Trading].[TradingModels]
+(
+    [Id]             bigint IDENTITY(1,1) NOT NULL,
+    [ExternalId]     uniqueidentifier NOT NULL CONSTRAINT [DF_TradingModels_ExternalId] DEFAULT (NEWID()),
+    [OwnerUserId]    bigint NULL,
+    [Name]           nvarchar(200) NOT NULL,
+    [Description]    nvarchar(2000) NULL,
+    [IsActive]       bit NOT NULL CONSTRAINT [DF_TradingModels_IsActive] DEFAULT (1),
+    [CreatedUtc]     datetime2(3) NOT NULL CONSTRAINT [DF_TradingModels_CreatedUtc] DEFAULT (SYSUTCDATETIME()),
+    [RowVersion]     rowversion NOT NULL,
+    CONSTRAINT [PK_TradingModels] PRIMARY KEY CLUSTERED ([Id])
+);
+
+CREATE TABLE [Trading].[TradingModelVersions]
+(
+    [Id]             bigint IDENTITY(1,1) NOT NULL,
+    [ExternalId]     uniqueidentifier NOT NULL CONSTRAINT [DF_TradingModelVersions_ExternalId] DEFAULT (NEWID()),
+    [TradingModelId] bigint NOT NULL,
+    [VersionNumber]  int NOT NULL,
+    [Status]         int NOT NULL,
+    [CreatedUtc]     datetime2(3) NOT NULL CONSTRAINT [DF_TradingModelVersions_CreatedUtc] DEFAULT (SYSUTCDATETIME()),
+    [PublishedUtc]   datetime2(3) NULL,
+    [RowVersion]     rowversion NOT NULL,
+    CONSTRAINT [PK_TradingModelVersions] PRIMARY KEY CLUSTERED ([Id]),
+    CONSTRAINT [CK_TradingModelVersions_VersionNumber] CHECK ([VersionNumber] > 0),
+    CONSTRAINT [CK_TradingModelVersions_Status] CHECK ([Status] IN (1, 2, 3)),
+    CONSTRAINT [CK_TradingModelVersions_PublishedState] CHECK
+    (
+        ([Status] = 1 AND [PublishedUtc] IS NULL)
+        OR ([Status] IN (2, 3) AND [PublishedUtc] IS NOT NULL)
+    ),
+    CONSTRAINT [CK_TradingModelVersions_PublishedTime] CHECK
+    (
+        [PublishedUtc] IS NULL OR [PublishedUtc] >= [CreatedUtc]
+    )
+);
+
+CREATE TABLE [Trading].[TradingModelTimeframes]
+(
+    [Id]                    bigint IDENTITY(1,1) NOT NULL,
+    [ExternalId]            uniqueidentifier NOT NULL CONSTRAINT [DF_TradingModelTimeframes_ExternalId] DEFAULT (NEWID()),
+    [TradingModelVersionId] bigint NOT NULL,
+    [Name]                  nvarchar(100) NOT NULL,
+    [DisplayOrder]          int NOT NULL,
+    [LookbackValue]         int NOT NULL,
+    [LookbackUnit]          int NOT NULL,
+    [BarIntervalValue]      int NOT NULL,
+    [BarIntervalUnit]       int NOT NULL,
+    [MarketSessionMode]     int NOT NULL,
+    [RowVersion]            rowversion NOT NULL,
+    CONSTRAINT [PK_TradingModelTimeframes] PRIMARY KEY CLUSTERED ([Id]),
+    CONSTRAINT [CK_TradingModelTimeframes_DisplayOrder] CHECK ([DisplayOrder] > 0),
+    CONSTRAINT [CK_TradingModelTimeframes_LookbackValue] CHECK ([LookbackValue] > 0),
+    CONSTRAINT [CK_TradingModelTimeframes_LookbackUnit] CHECK ([LookbackUnit] IN (1, 2, 3, 4, 5)),
+    CONSTRAINT [CK_TradingModelTimeframes_BarIntervalValue] CHECK ([BarIntervalValue] > 0),
+    CONSTRAINT [CK_TradingModelTimeframes_BarIntervalUnit] CHECK ([BarIntervalUnit] IN (1, 2, 3, 4)),
+    CONSTRAINT [CK_TradingModelTimeframes_MarketSessionMode] CHECK ([MarketSessionMode] IN (1, 2))
+);
+
+CREATE TABLE [Trading].[TradingModelIndicators]
+(
+    [Id]                      bigint IDENTITY(1,1) NOT NULL,
+    [ExternalId]              uniqueidentifier NOT NULL CONSTRAINT [DF_TradingModelIndicators_ExternalId] DEFAULT (NEWID()),
+    [TradingModelTimeframeId] bigint NOT NULL,
+    [IndicatorType]           int NOT NULL,
+    [Name]                    nvarchar(150) NOT NULL,
+    [Pane]                    int NOT NULL,
+    [DisplayOrder]            int NOT NULL,
+    [IsEnabled]               bit NOT NULL CONSTRAINT [DF_TradingModelIndicators_IsEnabled] DEFAULT (1),
+    [RowVersion]              rowversion NOT NULL,
+    CONSTRAINT [PK_TradingModelIndicators] PRIMARY KEY CLUSTERED ([Id]),
+    CONSTRAINT [CK_TradingModelIndicators_IndicatorType] CHECK ([IndicatorType] IN (1, 2, 3, 4, 5)),
+    CONSTRAINT [CK_TradingModelIndicators_Pane] CHECK ([Pane] IN (1, 2, 3)),
+    CONSTRAINT [CK_TradingModelIndicators_DisplayOrder] CHECK ([DisplayOrder] > 0)
+);
+
+CREATE TABLE [Trading].[TradingModelIndicatorParameters]
+(
+    [Id]                      bigint IDENTITY(1,1) NOT NULL,
+    [ExternalId]              uniqueidentifier NOT NULL CONSTRAINT [DF_TradingModelIndicatorParameters_ExternalId] DEFAULT (NEWID()),
+    [TradingModelIndicatorId] bigint NOT NULL,
+    [ParameterKey]            nvarchar(100) NOT NULL,
+    [ValueType]               int NOT NULL,
+    [ParameterValue]          nvarchar(500) NOT NULL,
+    [RowVersion]              rowversion NOT NULL,
+    CONSTRAINT [PK_TradingModelIndicatorParameters] PRIMARY KEY CLUSTERED ([Id]),
+    CONSTRAINT [CK_TradingModelIndicatorParameters_ValueType] CHECK ([ValueType] IN (1, 2, 3, 4))
+);
+
+CREATE TABLE [Trading].[TradingModelCriteria]
+(
+    [Id] bigint IDENTITY(1,1) NOT NULL, [ExternalId] uniqueidentifier NOT NULL CONSTRAINT [DF_TradingModelCriteria_ExternalId] DEFAULT (NEWID()),
+    [TradingModelVersionId] bigint NOT NULL, [Name] nvarchar(150) NOT NULL, [MetricKey] nvarchar(150) NOT NULL,
+    [Purpose] int NOT NULL, [ComparisonOperator] int NOT NULL, [PrimaryValueType] int NOT NULL, [PrimaryValue] nvarchar(500) NOT NULL,
+    [SecondaryValueType] int NULL, [SecondaryValue] nvarchar(500) NULL, [Weight] decimal(9,4) NULL, [DisplayOrder] int NOT NULL,
+    [IsEnabled] bit NOT NULL CONSTRAINT [DF_TradingModelCriteria_IsEnabled] DEFAULT (1), [RowVersion] rowversion NOT NULL,
+    CONSTRAINT [PK_TradingModelCriteria] PRIMARY KEY CLUSTERED ([Id]),
+    CONSTRAINT [CK_TradingModelCriteria_Purpose] CHECK ([Purpose] IN (1,2,3)), CONSTRAINT [CK_TradingModelCriteria_Operator] CHECK ([ComparisonOperator] BETWEEN 1 AND 12),
+    CONSTRAINT [CK_TradingModelCriteria_PrimaryValueType] CHECK ([PrimaryValueType] IN (1,2,3,4,5)), CONSTRAINT [CK_TradingModelCriteria_SecondaryValueType] CHECK ([SecondaryValueType] IS NULL OR [SecondaryValueType] IN (1,2,3,4,5)),
+    CONSTRAINT [CK_TradingModelCriteria_SecondaryValueState] CHECK (([SecondaryValueType] IS NULL AND [SecondaryValue] IS NULL) OR ([SecondaryValueType] IS NOT NULL AND [SecondaryValue] IS NOT NULL)),
+    CONSTRAINT [CK_TradingModelCriteria_RangeState] CHECK (([ComparisonOperator] IN (7,8) AND [SecondaryValue] IS NOT NULL) OR ([ComparisonOperator] NOT IN (7,8) AND [SecondaryValue] IS NULL)),
+    CONSTRAINT [CK_TradingModelCriteria_ValueTypesMatch] CHECK ([SecondaryValueType] IS NULL OR [SecondaryValueType] = [PrimaryValueType]),
+    CONSTRAINT [CK_TradingModelCriteria_Weight] CHECK (([Purpose] = 2 AND [Weight] > 0 AND [Weight] <= 100) OR ([Purpose] <> 2 AND [Weight] IS NULL)), CONSTRAINT [CK_TradingModelCriteria_DisplayOrder] CHECK ([DisplayOrder] > 0)
+);
+
+CREATE TABLE [Trading].[ScreeningStrategies]
+(
+    [Id] bigint IDENTITY(1,1) NOT NULL, [ExternalId] uniqueidentifier NOT NULL CONSTRAINT [DF_ScreeningStrategies_ExternalId] DEFAULT (NEWID()),
+    [OwnerUserId] bigint NULL, [Name] nvarchar(200) NOT NULL, [Description] nvarchar(2000) NULL,
+    [IsActive] bit NOT NULL CONSTRAINT [DF_ScreeningStrategies_IsActive] DEFAULT (1), [CreatedUtc] datetime2(3) NOT NULL CONSTRAINT [DF_ScreeningStrategies_CreatedUtc] DEFAULT (SYSUTCDATETIME()),
+    [RowVersion] rowversion NOT NULL, CONSTRAINT [PK_ScreeningStrategies] PRIMARY KEY CLUSTERED ([Id])
+);
+
+CREATE TABLE [Trading].[ScreeningStrategyVersions]
+(
+    [Id] bigint IDENTITY(1,1) NOT NULL, [ExternalId] uniqueidentifier NOT NULL CONSTRAINT [DF_ScreeningStrategyVersions_ExternalId] DEFAULT (NEWID()),
+    [ScreeningStrategyId] bigint NOT NULL, [VersionNumber] int NOT NULL, [Status] int NOT NULL,
+    [CreatedUtc] datetime2(3) NOT NULL CONSTRAINT [DF_ScreeningStrategyVersions_CreatedUtc] DEFAULT (SYSUTCDATETIME()), [PublishedUtc] datetime2(3) NULL, [RowVersion] rowversion NOT NULL,
+    CONSTRAINT [PK_ScreeningStrategyVersions] PRIMARY KEY CLUSTERED ([Id]), CONSTRAINT [CK_ScreeningStrategyVersions_VersionNumber] CHECK ([VersionNumber] > 0),
+    CONSTRAINT [CK_ScreeningStrategyVersions_Status] CHECK ([Status] IN (1,2,3)), CONSTRAINT [CK_ScreeningStrategyVersions_PublishedState] CHECK (([Status] = 1 AND [PublishedUtc] IS NULL) OR ([Status] IN (2,3) AND [PublishedUtc] IS NOT NULL)),
+    CONSTRAINT [CK_ScreeningStrategyVersions_PublishedTime] CHECK ([PublishedUtc] IS NULL OR [PublishedUtc] >= [CreatedUtc])
+);
+
+CREATE TABLE [Trading].[ScreeningRules]
+(
+    [Id] bigint IDENTITY(1,1) NOT NULL, [ExternalId] uniqueidentifier NOT NULL CONSTRAINT [DF_ScreeningRules_ExternalId] DEFAULT (NEWID()),
+    [ScreeningStrategyVersionId] bigint NOT NULL, [Name] nvarchar(150) NOT NULL, [MetricKey] nvarchar(150) NOT NULL,
+    [Purpose] int NOT NULL, [ComparisonOperator] int NOT NULL, [PrimaryValueType] int NOT NULL, [PrimaryValue] nvarchar(500) NOT NULL,
+    [SecondaryValueType] int NULL, [SecondaryValue] nvarchar(500) NULL, [Weight] decimal(9,4) NULL, [DisplayOrder] int NOT NULL,
+    [IsEnabled] bit NOT NULL CONSTRAINT [DF_ScreeningRules_IsEnabled] DEFAULT (1), [RowVersion] rowversion NOT NULL,
+    CONSTRAINT [PK_ScreeningRules] PRIMARY KEY CLUSTERED ([Id]), CONSTRAINT [CK_ScreeningRules_Purpose] CHECK ([Purpose] IN (1,2,3)),
+    CONSTRAINT [CK_ScreeningRules_Operator] CHECK ([ComparisonOperator] BETWEEN 1 AND 12), CONSTRAINT [CK_ScreeningRules_PrimaryValueType] CHECK ([PrimaryValueType] IN (1,2,3,4,5)),
+    CONSTRAINT [CK_ScreeningRules_SecondaryValueType] CHECK ([SecondaryValueType] IS NULL OR [SecondaryValueType] IN (1,2,3,4,5)),
+    CONSTRAINT [CK_ScreeningRules_SecondaryValueState] CHECK (([SecondaryValueType] IS NULL AND [SecondaryValue] IS NULL) OR ([SecondaryValueType] IS NOT NULL AND [SecondaryValue] IS NOT NULL)),
+    CONSTRAINT [CK_ScreeningRules_RangeState] CHECK (([ComparisonOperator] IN (7,8) AND [SecondaryValue] IS NOT NULL) OR ([ComparisonOperator] NOT IN (7,8) AND [SecondaryValue] IS NULL)),
+    CONSTRAINT [CK_ScreeningRules_ValueTypesMatch] CHECK ([SecondaryValueType] IS NULL OR [SecondaryValueType] = [PrimaryValueType]),
+    CONSTRAINT [CK_ScreeningRules_Weight] CHECK (([Purpose] = 2 AND [Weight] > 0 AND [Weight] <= 100) OR ([Purpose] <> 2 AND [Weight] IS NULL)), CONSTRAINT [CK_ScreeningRules_DisplayOrder] CHECK ([DisplayOrder] > 0)
+);
+
+/* =========================================================
    Foreign keys
    ========================================================= */
 
@@ -574,6 +718,22 @@ ALTER TABLE [Storage].[StoredFiles] ADD CONSTRAINT [FK_StoredFiles_ModifiedByUse
     FOREIGN KEY ([ModifiedByUserId]) REFERENCES [Identity].[Users]([Id]);
 ALTER TABLE [Storage].[StoredFiles] ADD CONSTRAINT [FK_StoredFiles_DeletedByUser]
     FOREIGN KEY ([DeletedByUserId]) REFERENCES [Identity].[Users]([Id]);
+
+/* Trading */
+ALTER TABLE [Trading].[TradingModels] ADD CONSTRAINT [FK_TradingModels_OwnerUser]
+    FOREIGN KEY ([OwnerUserId]) REFERENCES [Identity].[Users]([Id]);
+ALTER TABLE [Trading].[TradingModelVersions] ADD CONSTRAINT [FK_TradingModelVersions_TradingModel]
+    FOREIGN KEY ([TradingModelId]) REFERENCES [Trading].[TradingModels]([Id]);
+ALTER TABLE [Trading].[TradingModelTimeframes] ADD CONSTRAINT [FK_TradingModelTimeframes_TradingModelVersion]
+    FOREIGN KEY ([TradingModelVersionId]) REFERENCES [Trading].[TradingModelVersions]([Id]);
+ALTER TABLE [Trading].[TradingModelIndicators] ADD CONSTRAINT [FK_TradingModelIndicators_TradingModelTimeframe]
+    FOREIGN KEY ([TradingModelTimeframeId]) REFERENCES [Trading].[TradingModelTimeframes]([Id]);
+ALTER TABLE [Trading].[TradingModelIndicatorParameters] ADD CONSTRAINT [FK_TradingModelIndicatorParameters_TradingModelIndicator]
+    FOREIGN KEY ([TradingModelIndicatorId]) REFERENCES [Trading].[TradingModelIndicators]([Id]);
+ALTER TABLE [Trading].[TradingModelCriteria] ADD CONSTRAINT [FK_TradingModelCriteria_TradingModelVersion] FOREIGN KEY ([TradingModelVersionId]) REFERENCES [Trading].[TradingModelVersions]([Id]);
+ALTER TABLE [Trading].[ScreeningStrategies] ADD CONSTRAINT [FK_ScreeningStrategies_OwnerUser] FOREIGN KEY ([OwnerUserId]) REFERENCES [Identity].[Users]([Id]);
+ALTER TABLE [Trading].[ScreeningStrategyVersions] ADD CONSTRAINT [FK_ScreeningStrategyVersions_ScreeningStrategy] FOREIGN KEY ([ScreeningStrategyId]) REFERENCES [Trading].[ScreeningStrategies]([Id]);
+ALTER TABLE [Trading].[ScreeningRules] ADD CONSTRAINT [FK_ScreeningRules_ScreeningStrategyVersion] FOREIGN KEY ([ScreeningStrategyVersionId]) REFERENCES [Trading].[ScreeningStrategyVersions]([Id]);
 
 /* =========================================================
    Indexes
@@ -730,6 +890,66 @@ CREATE NONCLUSTERED INDEX [IX_StoredFiles_UploadStatus_CreatedUtc]
 CREATE NONCLUSTERED INDEX [IX_StoredFiles_ContentHash]
     ON [Storage].[StoredFiles]([ContentHash])
     WHERE [ContentHash] IS NOT NULL;
+
+/* Trading */
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModels_ExternalId]
+    ON [Trading].[TradingModels]([ExternalId]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModels_OwnerUserId_Name]
+    ON [Trading].[TradingModels]([OwnerUserId], [Name])
+    WHERE [OwnerUserId] IS NOT NULL;
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModels_SystemTemplate_Name]
+    ON [Trading].[TradingModels]([Name])
+    WHERE [OwnerUserId] IS NULL;
+CREATE NONCLUSTERED INDEX [IX_TradingModels_OwnerUserId_IsActive]
+    ON [Trading].[TradingModels]([OwnerUserId], [IsActive]);
+
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelVersions_ExternalId]
+    ON [Trading].[TradingModelVersions]([ExternalId]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelVersions_ModelId_VersionNumber]
+    ON [Trading].[TradingModelVersions]([TradingModelId], [VersionNumber]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelVersions_OneDraftPerModel]
+    ON [Trading].[TradingModelVersions]([TradingModelId])
+    WHERE [Status] = 1;
+CREATE NONCLUSTERED INDEX [IX_TradingModelVersions_ModelId_Status]
+    ON [Trading].[TradingModelVersions]([TradingModelId], [Status]);
+
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelTimeframes_ExternalId]
+    ON [Trading].[TradingModelTimeframes]([ExternalId]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelTimeframes_VersionId_Name]
+    ON [Trading].[TradingModelTimeframes]([TradingModelVersionId], [Name]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelTimeframes_VersionId_DisplayOrder]
+    ON [Trading].[TradingModelTimeframes]([TradingModelVersionId], [DisplayOrder]);
+
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelIndicators_ExternalId]
+    ON [Trading].[TradingModelIndicators]([ExternalId]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelIndicators_TimeframeId_Name]
+    ON [Trading].[TradingModelIndicators]([TradingModelTimeframeId], [Name]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelIndicators_TimeframeId_DisplayOrder]
+    ON [Trading].[TradingModelIndicators]([TradingModelTimeframeId], [DisplayOrder]);
+CREATE NONCLUSTERED INDEX [IX_TradingModelIndicators_TimeframeId_IndicatorType]
+    ON [Trading].[TradingModelIndicators]([TradingModelTimeframeId], [IndicatorType]);
+
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelIndicatorParameters_ExternalId]
+    ON [Trading].[TradingModelIndicatorParameters]([ExternalId]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelIndicatorParameters_IndicatorId_Key]
+    ON [Trading].[TradingModelIndicatorParameters]([TradingModelIndicatorId], [ParameterKey]);
+
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelCriteria_ExternalId] ON [Trading].[TradingModelCriteria]([ExternalId]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelCriteria_VersionId_Name] ON [Trading].[TradingModelCriteria]([TradingModelVersionId], [Name]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_TradingModelCriteria_VersionId_DisplayOrder] ON [Trading].[TradingModelCriteria]([TradingModelVersionId], [DisplayOrder]);
+CREATE NONCLUSTERED INDEX [IX_TradingModelCriteria_VersionId_Purpose] ON [Trading].[TradingModelCriteria]([TradingModelVersionId], [Purpose]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_ScreeningStrategies_ExternalId] ON [Trading].[ScreeningStrategies]([ExternalId]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_ScreeningStrategies_OwnerUserId_Name] ON [Trading].[ScreeningStrategies]([OwnerUserId], [Name]) WHERE [OwnerUserId] IS NOT NULL;
+CREATE UNIQUE NONCLUSTERED INDEX [UX_ScreeningStrategies_SystemTemplate_Name] ON [Trading].[ScreeningStrategies]([Name]) WHERE [OwnerUserId] IS NULL;
+CREATE NONCLUSTERED INDEX [IX_ScreeningStrategies_OwnerUserId_IsActive] ON [Trading].[ScreeningStrategies]([OwnerUserId], [IsActive]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_ScreeningStrategyVersions_ExternalId] ON [Trading].[ScreeningStrategyVersions]([ExternalId]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_ScreeningStrategyVersions_StrategyId_VersionNumber] ON [Trading].[ScreeningStrategyVersions]([ScreeningStrategyId], [VersionNumber]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_ScreeningStrategyVersions_OneDraftPerStrategy] ON [Trading].[ScreeningStrategyVersions]([ScreeningStrategyId]) WHERE [Status] = 1;
+CREATE NONCLUSTERED INDEX [IX_ScreeningStrategyVersions_StrategyId_Status] ON [Trading].[ScreeningStrategyVersions]([ScreeningStrategyId], [Status]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_ScreeningRules_ExternalId] ON [Trading].[ScreeningRules]([ExternalId]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_ScreeningRules_VersionId_Name] ON [Trading].[ScreeningRules]([ScreeningStrategyVersionId], [Name]);
+CREATE UNIQUE NONCLUSTERED INDEX [UX_ScreeningRules_VersionId_DisplayOrder] ON [Trading].[ScreeningRules]([ScreeningStrategyVersionId], [DisplayOrder]);
+CREATE NONCLUSTERED INDEX [IX_ScreeningRules_VersionId_Purpose] ON [Trading].[ScreeningRules]([ScreeningStrategyVersionId], [Purpose]);
 
 COMMIT TRANSACTION;
 GO

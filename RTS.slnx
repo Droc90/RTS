@@ -2,6 +2,7 @@
   <Project Path="RTS.Application.Tests/RTS.Application.Tests.csproj" />
   <Project Path="RTS.Application/RTS.Application.csproj" />
   <Project Path="RTS.Contracts/RTS.Contracts.csproj" />
+  <Project Path="RTS.Domain.Tests/RTS.Domain.Tests.csproj" Id="d3c0c136-2318-493b-819b-4b5279557306" />
   <Project Path="RTS.Domain/RTS.Domain.csproj" />
   <Project Path="RTS.Infrastructure/RTS.Infrastructure.csproj" />
   <Project Path="RTS.Integration.Tests/RTS.Integration.Tests.csproj" Id="09e3f54c-13b1-42d7-9462-e89b919f0187" />
