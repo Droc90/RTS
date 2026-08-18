@@ -10,6 +10,8 @@ using RTS.Application.Auditing;
 using RTS.Infrastructure.Auditing;
 using RTS.Application.Profiles;
 using RTS.Infrastructure.Profiles;
+using RTS.Application.CandidateDiscovery;
+using RTS.Infrastructure.CandidateDiscovery;
 
 namespace RTS.Infrastructure;
 
@@ -89,6 +91,8 @@ public static class DependencyInjection
         services.AddScoped<
             IApplicationErrorAdministrationService,
             ApplicationErrorAdministrationService>();
+
+        services.AddScoped<ICandidateInboxService, CandidateInboxService>();
 
         return services;
     }

@@ -1,0 +1,107 @@
+@page "/candidates"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.CandidateDiscovery
+@using RTS.Domain.CandidateDiscovery
+@using RTS.Web.Identity
+@inject ICandidateInboxService InboxService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Candidate Inbox</PageTitle>
+
+<section class="py-4" aria-labelledby="candidate-inbox-heading">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <h1 id="candidate-inbox-heading" class="h2 mb-1">Candidate Inbox</h1>
+            <p class="text-body-secondary mb-0">Review discovery results and explicitly select candidates before full evaluation.</p>
+        </div>
+        <button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@isBusy">Refresh</button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <div class="alert @(isError ? "alert-danger" : "alert-success")" role="status">@message</div>
+    }
+
+    @if (isBusy)
+    {
+        <p aria-live="polite">Loading candidates…</p>
+    }
+    else if (items.Count == 0)
+    {
+        <div class="card"><div class="card-body"><h2 class="h5">No candidates yet</h2><p class="mb-0 text-body-secondary">Run discovery or add a manual candidate to populate this inbox.</p></div></div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <caption class="visually-hidden">Discovered trading candidates</caption>
+                <thead><tr><th>Rank</th><th>Symbol</th><th>Source</th><th>Result</th><th>Score</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody>
+                @foreach (var item in items)
+                {
+                    <tr>
+                        <td>@item.Rank</td>
+                        <th scope="row">@item.Symbol</th>
+                        <td>@item.Source</td>
+                        <td><span class="badge @OutcomeClass(item.Outcome)">@item.Outcome</span></td>
+                        <td>@item.Score.ToString("0.##")</td>
+                        <td>@item.Status</td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-1">
+                                <button class="btn btn-sm btn-primary" disabled="@(!CanSelect(item.Status))" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Selected)">Select</button>
+                                <button class="btn btn-sm btn-outline-secondary" disabled="@(item.Status is CandidateWorkflowStatus.Rejected or CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated)" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Deferred)">Defer</button>
+                                <button class="btn btn-sm btn-outline-danger" disabled="@(item.Status is CandidateWorkflowStatus.Rejected or CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated)" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Rejected)">Reject</button>
+                                <button class="btn btn-sm btn-outline-danger" disabled="@(item.Status is CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated)" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Excluded)">Exclude</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private IReadOnlyCollection<CandidateInboxItem> items = [];
+    private Guid userExternalId;
+    private bool isBusy = true;
+    private bool isError;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        if (!principal.TryGetExternalUserId(out userExternalId))
+        {
+            isBusy = false;
+            isError = true;
+            message = "Your user identifier is unavailable. Please sign in again.";
+            return;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isBusy = true;
+        message = null;
+        items = await InboxService.GetInboxAsync(userExternalId);
+        isBusy = false;
+    }
+
+    private async Task ChangeStatusAsync(CandidateInboxItem item, CandidateWorkflowStatus status)
+    {
+        isBusy = true;
+        var changed = await InboxService.SetStatusAsync(userExternalId, item.ExternalId, status, item.RowVersion);
+        isError = !changed;
+        message = changed ? $"{item.Symbol} is now {status}." : "The candidate changed elsewhere or the requested transition is not allowed. Refresh and try again.";
+        items = await InboxService.GetInboxAsync(userExternalId);
+        isBusy = false;
+    }
+
+    private static bool CanSelect(CandidateWorkflowStatus status) => status is CandidateWorkflowStatus.Proposed or CandidateWorkflowStatus.Deferred;
+    private static string OutcomeClass(ScreeningOutcome outcome) => outcome switch { ScreeningOutcome.Passed => "text-bg-success", ScreeningOutcome.Warning => "text-bg-warning", _ => "text-bg-danger" };
+}

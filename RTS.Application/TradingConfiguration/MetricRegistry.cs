@@ -108,6 +108,12 @@ public sealed class MetricRegistry : IMetricRegistry
                 MetricUsage.Screening),
 
             Numeric(
+                "Market.Price",
+                "Market price",
+                RuleValueType.Decimal,
+                MetricUsage.Screening),
+
+            Numeric(
                 "Technical.Rsi",
                 "Relative Strength Index",
                 RuleValueType.Decimal,

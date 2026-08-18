@@ -2,12 +2,13 @@
 
 ## Current status
 
-- Current branch: `feature/candidate-screening`
+- Current branch: `feature/candidate-discovery`
 - Current milestone: Candidate Discovery and Screening
 - Application Foundation: 100% complete
 - Configurable Trading Model and Criteria Foundation: 100% complete
-- Overall RTS checklist: 23% complete (24 of 103 items)
-- Cumulative active developer effort: 7–8 hours
+- Candidate Discovery and Screening: 100% complete
+- Overall RTS checklist: 43% complete (44 of 103 items)
+- Cumulative active developer effort: 12–13 hours
 - Architecture: [RTS application architecture](architecture.md)
 - Product and AI design: [RTS product, AI, and adaptive-presentation design](product-ai-and-presentation.md)
 
@@ -45,32 +46,32 @@ The overall percentage is calculated from the complete current checklist. It may
 
 Developer effort completed: approximately 4 active developer hours.
 
-## Candidate Discovery and Screening
+## Candidate Discovery and Screening — complete
 
-- [ ] Translate the initial methodology into rule definitions
-- [ ] Define candidate universes and supported asset types
-- [ ] Support manual and watchlist candidate entry
-- [ ] Run deterministic fundamental and market screens
-- [ ] Add AI-assisted catalyst discovery
-- [ ] Record sources, citations, timestamps, and evidence quality
-- [ ] Track previously evaluated, rejected, deferred, and excluded symbols
-- [ ] Execute repeatable candidate-discovery runs
-- [ ] Rank candidates using visible factors
-- [ ] Build the Candidate Inbox
-- [ ] Require user selection before full evaluation
-- [ ] Explain why candidates passed, warned, or failed
-- [ ] Save discovery runs and criteria snapshots
-- [ ] Export candidate lists
+- [x] Translate the initial methodology into rule definitions
+- [x] Define candidate universes and supported asset types
+- [x] Support manual and watchlist candidate entry
+- [x] Run deterministic fundamental and market screens
+- [x] Add AI-assisted catalyst discovery
+- [x] Record sources, citations, timestamps, and evidence quality
+- [x] Track previously evaluated, rejected, deferred, and excluded symbols
+- [x] Execute repeatable candidate-discovery runs
+- [x] Rank candidates using visible factors
+- [x] Build the Candidate Inbox
+- [x] Require user selection before full evaluation
+- [x] Explain why candidates passed, warned, or failed
+- [x] Save discovery runs and criteria snapshots
+- [x] Export candidate lists
 
 ## Market Data, Chart Automation, and Evaluation Jobs
 
-- [ ] Define market-data coverage, freshness, and licensing requirements
-- [ ] Create a provider-neutral market-price-data interface
+- [x] Define market-data coverage, freshness, and licensing requirements
+- [x] Create a provider-neutral market-price-data interface
 - [ ] Retrieve OHLCV bars, quotes, and corporate actions
-- [ ] Use regular trading hours by default for the initial model
-- [ ] Support optional extended-hours retrieval and display
-- [ ] Configure whether extended hours affect indicators and scoring
-- [ ] Normalize timestamps, sessions, missing bars, and adjustments
+- [x] Use regular trading hours by default for the initial model
+- [x] Support optional extended-hours retrieval and display
+- [x] Configure whether extended hours affect indicators and scoring
+- [x] Normalize timestamps, sessions, missing bars, and adjustments
 - [ ] Retrieve sufficient warm-up history for indicator calculations
 - [ ] Cache or persist normalized evaluation inputs
 - [ ] Queue durable evaluation jobs for selected candidates
@@ -150,3 +151,6 @@ Developer effort completed: approximately 4 active developer hours.
 | Milestone | Active developer effort | Cumulative effort |
 |---|---:|---:|
 | Application Foundation | 3–4 hours | 3–4 hours |
+| Configurable Trading Model and Criteria Foundation | 4 hours | 7–8 hours |
+| Candidate Discovery and Screening | 4 hours | 11–12 hours |
+| Market Data, Chart Automation, and Evaluation Jobs (in progress) | 1 hour | 12–13 hours |
