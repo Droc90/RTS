@@ -2,13 +2,13 @@
 
 ## Current status
 
-- Current branch: `feature/candidate-discovery`
-- Current milestone: Candidate Discovery and Screening
+- Current branch: `feature/market-data-evaluation-jobs`
+- Current milestone: Market Data, Chart Automation, and Evaluation Jobs
 - Application Foundation: 100% complete
 - Configurable Trading Model and Criteria Foundation: 100% complete
 - Candidate Discovery and Screening: 100% complete
-- Overall RTS checklist: 43% complete (44 of 103 items)
-- Cumulative active developer effort: 12–13 hours
+- Overall RTS checklist: 48% complete (49 of 103 items)
+- Cumulative active developer effort: 14–15 hours
 - Architecture: [RTS application architecture](architecture.md)
 - Product and AI design: [RTS product, AI, and adaptive-presentation design](product-ai-and-presentation.md)
 
@@ -67,15 +67,15 @@ Developer effort completed: approximately 4 active developer hours.
 
 - [x] Define market-data coverage, freshness, and licensing requirements
 - [x] Create a provider-neutral market-price-data interface
-- [ ] Retrieve OHLCV bars, quotes, and corporate actions
+- [x] Retrieve OHLCV bars, quotes, and corporate actions
 - [x] Use regular trading hours by default for the initial model
 - [x] Support optional extended-hours retrieval and display
 - [x] Configure whether extended hours affect indicators and scoring
 - [x] Normalize timestamps, sessions, missing bars, and adjustments
-- [ ] Retrieve sufficient warm-up history for indicator calculations
-- [ ] Cache or persist normalized evaluation inputs
-- [ ] Queue durable evaluation jobs for selected candidates
-- [ ] Display evaluation-job progress, failures, cancellation, and retry
+- [x] Retrieve sufficient warm-up history for indicator calculations
+- [x] Cache or persist normalized evaluation inputs
+- [x] Queue durable evaluation jobs for selected candidates
+- [x] Display evaluation-job progress, failures, cancellation, and retry
 - [ ] Render model-driven interactive financial charts
 - [ ] Reproduce the initial 5D, 1M, and 3M chart specification
 
@@ -153,4 +153,4 @@ Developer effort completed: approximately 4 active developer hours.
 | Application Foundation | 3–4 hours | 3–4 hours |
 | Configurable Trading Model and Criteria Foundation | 4 hours | 7–8 hours |
 | Candidate Discovery and Screening | 4 hours | 11–12 hours |
-| Market Data, Chart Automation, and Evaluation Jobs (in progress) | 1 hour | 12–13 hours |
+| Market Data, Chart Automation, and Evaluation Jobs (in progress) | 3 hours | 14–15 hours |

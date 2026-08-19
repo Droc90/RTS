@@ -10,6 +10,7 @@ using RTS.Infrastructure.Profiles;
 using RTS.Domain.TradingModels.Criteria;
 using RTS.Domain.ScreeningStrategies;
 using RTS.Infrastructure.CandidateDiscovery;
+using RTS.Infrastructure.EvaluationJobs;
 
 namespace RTS.Infrastructure.Persistence;
 
@@ -66,6 +67,10 @@ public sealed class RtsDbContext : IdentityDbContext<
     public DbSet<DiscoveryRun> DiscoveryRuns => Set<DiscoveryRun>();
 
     public DbSet<DiscoveryCandidate> DiscoveryCandidates => Set<DiscoveryCandidate>();
+
+    public DbSet<EvaluationJob> EvaluationJobs => Set<EvaluationJob>();
+
+    public DbSet<MarketDataSnapshot> MarketDataSnapshots => Set<MarketDataSnapshot>();
 
     public RtsDbContext(
         DbContextOptions<RtsDbContext> options)
