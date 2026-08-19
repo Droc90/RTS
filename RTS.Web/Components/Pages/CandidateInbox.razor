@@ -4,9 +4,11 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using RTS.Application.CandidateDiscovery
 @using RTS.Domain.CandidateDiscovery
+@using RTS.Application.EvaluationJobs
 @using RTS.Web.Identity
 @inject ICandidateInboxService InboxService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IEvaluationJobService EvaluationJobService
 
 <PageTitle>Candidate Inbox</PageTitle>
 
@@ -17,6 +19,7 @@
             <p class="text-body-secondary mb-0">Review discovery results and explicitly select candidates before full evaluation.</p>
         </div>
         <button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@isBusy">Refresh</button>
+        <a class="btn btn-outline-primary" href="/evaluation-jobs">Evaluation jobs</a>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(message))
@@ -51,6 +54,7 @@
                         <td>
                             <div class="d-flex flex-wrap gap-1">
                                 <button class="btn btn-sm btn-primary" disabled="@(!CanSelect(item.Status))" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Selected)">Select</button>
+                                <button class="btn btn-sm btn-success" disabled="@(item.Status != CandidateWorkflowStatus.Selected)" @onclick="() => QueueAsync(item)">Queue evaluation</button>
                                 <button class="btn btn-sm btn-outline-secondary" disabled="@(item.Status is CandidateWorkflowStatus.Rejected or CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated)" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Deferred)">Defer</button>
                                 <button class="btn btn-sm btn-outline-danger" disabled="@(item.Status is CandidateWorkflowStatus.Rejected or CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated)" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Rejected)">Reject</button>
                                 <button class="btn btn-sm btn-outline-danger" disabled="@(item.Status is CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated)" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Excluded)">Exclude</button>
@@ -98,6 +102,24 @@
         var changed = await InboxService.SetStatusAsync(userExternalId, item.ExternalId, status, item.RowVersion);
         isError = !changed;
         message = changed ? $"{item.Symbol} is now {status}." : "The candidate changed elsewhere or the requested transition is not allowed. Refresh and try again.";
+        items = await InboxService.GetInboxAsync(userExternalId);
+        isBusy = false;
+    }
+
+    private async Task QueueAsync(CandidateInboxItem item)
+    {
+        isBusy = true;
+        try
+        {
+            await EvaluationJobService.EnqueueSelectedCandidateAsync(userExternalId, item.ExternalId);
+            isError = false;
+            message = $"{item.Symbol} was queued for evaluation.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            isError = true;
+            message = exception.Message;
+        }
         items = await InboxService.GetInboxAsync(userExternalId);
         isBusy = false;
     }

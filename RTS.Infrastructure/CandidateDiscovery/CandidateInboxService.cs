@@ -57,10 +57,16 @@ public sealed class CandidateInboxService(RtsDbContext dbContext) : ICandidateIn
         var ownerId = await GetActiveUserIdAsync(userExternalId, cancellationToken);
         return await dbContext.DiscoveryCandidates.AsNoTracking()
             .Join(dbContext.DiscoveryRuns.Where(run => run.OwnerUserId == ownerId), candidate => candidate.DiscoveryRunId, run => run.Id,
-                (candidate, run) => new CandidateInboxItem(candidate.ExternalId, run.ExternalId, candidate.Symbol, candidate.AssetType, candidate.Source, candidate.Outcome, candidate.Score, candidate.Rank, candidate.DataTimestampUtc, candidate.Status, candidate.FactorsJson, candidate.EvidenceJson, candidate.RowVersion))
-            .OrderBy(candidate => candidate.Status)
-            .ThenBy(candidate => candidate.Rank)
-            .ThenBy(candidate => candidate.Symbol)
+                (candidate, run) => new { Candidate = candidate, RunExternalId = run.ExternalId })
+            .OrderBy(item => item.Candidate.Status)
+            .ThenBy(item => item.Candidate.Rank)
+            .ThenBy(item => item.Candidate.Symbol)
+            .Select(item => new CandidateInboxItem(
+                item.Candidate.ExternalId, item.RunExternalId, item.Candidate.Symbol,
+                item.Candidate.AssetType, item.Candidate.Source, item.Candidate.Outcome,
+                item.Candidate.Score, item.Candidate.Rank, item.Candidate.DataTimestampUtc,
+                item.Candidate.Status, item.Candidate.FactorsJson, item.Candidate.EvidenceJson,
+                item.Candidate.RowVersion))
             .ToArrayAsync(cancellationToken);
     }
 

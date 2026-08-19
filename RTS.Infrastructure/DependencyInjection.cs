@@ -12,6 +12,9 @@ using RTS.Application.Profiles;
 using RTS.Infrastructure.Profiles;
 using RTS.Application.CandidateDiscovery;
 using RTS.Infrastructure.CandidateDiscovery;
+using RTS.Application.EvaluationJobs;
+using RTS.Application.MarketData;
+using RTS.Infrastructure.EvaluationJobs;
 
 namespace RTS.Infrastructure;
 
@@ -93,6 +96,8 @@ public static class DependencyInjection
             ApplicationErrorAdministrationService>();
 
         services.AddScoped<ICandidateInboxService, CandidateInboxService>();
+        services.AddScoped<IEvaluationJobService, EvaluationJobService>();
+        services.AddScoped<IMarketDataSnapshotStore, MarketDataSnapshotStore>();
 
         return services;
     }
