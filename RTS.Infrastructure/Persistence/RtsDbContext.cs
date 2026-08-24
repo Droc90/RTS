@@ -68,6 +68,8 @@ public sealed class RtsDbContext : IdentityDbContext<
 
     public DbSet<DiscoveryCandidate> DiscoveryCandidates => Set<DiscoveryCandidate>();
 
+    public DbSet<CandidateIdentificationSettingsEntity> CandidateIdentificationSettings => Set<CandidateIdentificationSettingsEntity>();
+
     public DbSet<EvaluationJob> EvaluationJobs => Set<EvaluationJob>();
 
     public DbSet<MarketDataSnapshot> MarketDataSnapshots => Set<MarketDataSnapshot>();

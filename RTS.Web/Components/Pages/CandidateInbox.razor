@@ -6,9 +6,11 @@
 @using RTS.Domain.CandidateDiscovery
 @using RTS.Application.EvaluationJobs
 @using RTS.Web.Identity
+@using System.Text.Json
 @inject ICandidateInboxService InboxService
-@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IEvaluationJobService EvaluationJobService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject DialogService DialogService
 
 <PageTitle>Candidate Inbox</PageTitle>
 
@@ -16,10 +18,11 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
         <div>
             <h1 id="candidate-inbox-heading" class="h2 mb-1">Candidate Inbox</h1>
-            <p class="text-body-secondary mb-0">Review discovery results and explicitly select candidates before full evaluation.</p>
+            <p class="text-body-secondary mb-0">Here is how the current candidates rank for further RTS review.</p>
         </div>
         <button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@isBusy">Refresh</button>
-        <a class="btn btn-outline-primary" href="/evaluation-jobs">Evaluation jobs</a>
+        <a class="btn btn-outline-primary" href="/evaluation-jobs">Evaluation history</a>
+        <a class="btn btn-primary" href="/candidate-discovery">Discover candidates</a>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(message))
@@ -40,27 +43,70 @@
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <caption class="visually-hidden">Discovered trading candidates</caption>
-                <thead><tr><th>Rank</th><th>Symbol</th><th>Source</th><th>Result</th><th>Score</th><th>Status</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Rank</th><th>Symbol</th><th>Review?</th><th>Why</th><th><span class="visually-hidden">Details</span></th><th><span class="visually-hidden">Evaluation</span></th><th><span class="visually-hidden">More actions</span></th></tr></thead>
                 <tbody>
                 @foreach (var item in items)
                 {
                     <tr>
-                        <td>@item.Rank</td>
+                        <td class="text-center">@item.Rank</td>
                         <th scope="row">@item.Symbol</th>
-                        <td>@item.Source</td>
-                        <td><span class="badge @OutcomeClass(item.Outcome)">@item.Outcome</span></td>
-                        <td>@item.Score.ToString("0.##")</td>
-                        <td>@item.Status</td>
+                        <td><span class="badge rounded-pill @ReviewClass(item) candidate-review-chip" title="@ReviewMeaning(item)" aria-label="@($"{ReviewMessage(item)}: {ReviewMeaning(item)}")">@ReviewMessage(item)</span></td>
+                        <td class="candidate-why">@CandidateReason(item)</td>
+                        <td><button type="button" class="candidate-icon-action candidate-disclosure" title="@(expanded.Contains(item.ExternalId) ? "Hide details" : "Show details")" aria-label="@(expanded.Contains(item.ExternalId) ? $"Hide details for {item.Symbol}" : $"Show details for {item.Symbol}")" aria-expanded="@expanded.Contains(item.ExternalId)" @onclick="() => ToggleDetails(item.ExternalId)"><RadzenIcon Icon="@(expanded.Contains(item.ExternalId) ? "keyboard_arrow_up" : "keyboard_arrow_down")" /></button></td>
+                        <td><button type="button" class="btn btn-sm btn-success text-nowrap" disabled="@(!CanEvaluate(item) || evaluationOpening == item.ExternalId)" @onclick="() => OpenEvaluationAsync(item)">@(evaluationOpening == item.ExternalId ? "Opening…" : "Full evaluation")</button></td>
                         <td>
-                            <div class="d-flex flex-wrap gap-1">
-                                <button class="btn btn-sm btn-primary" disabled="@(!CanSelect(item.Status))" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Selected)">Select</button>
-                                <button class="btn btn-sm btn-success" disabled="@(item.Status != CandidateWorkflowStatus.Selected)" @onclick="() => QueueAsync(item)">Queue evaluation</button>
-                                <button class="btn btn-sm btn-outline-secondary" disabled="@(item.Status is CandidateWorkflowStatus.Rejected or CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated)" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Deferred)">Defer</button>
-                                <button class="btn btn-sm btn-outline-danger" disabled="@(item.Status is CandidateWorkflowStatus.Rejected or CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated)" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Rejected)">Reject</button>
-                                <button class="btn btn-sm btn-outline-danger" disabled="@(item.Status is CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated)" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Excluded)">Exclude</button>
+                            <div class="candidate-action-menu">
+                                <button type="button" class="candidate-icon-action" title="More actions" aria-label="More actions for @item.Symbol" aria-expanded="@(actionsFor == item.ExternalId)" @onclick="() => ToggleActions(item.ExternalId)"><RadzenIcon Icon="more_horiz" /></button>
+                                @if (actionsFor == item.ExternalId)
+                                {
+                                    <div class="candidate-action-menu-items">
+                                        <button type="button" disabled="@(!CanDisposition(item))" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Deferred)">Defer</button>
+                                        <button type="button" disabled="@(!CanDisposition(item))" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Rejected)">Reject</button>
+                                        <button type="button" disabled="@(item.Status is CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated)" @onclick="() => ChangeStatusAsync(item, CandidateWorkflowStatus.Excluded)">Exclude</button>
+                                    </div>
+                                }
                             </div>
                         </td>
                     </tr>
+                    @if (expanded.Contains(item.ExternalId))
+                    {
+                        var factors = ReadFactors(item);
+                        var evidence = ReadEvidence(item);
+                        <tr class="candidate-details">
+                            <td colspan="7">
+                                <div class="p-3">
+                                    <h2 class="h5">@item.Symbol screening details</h2>
+                                    <p class="small text-body-secondary">Observed @item.DataTimestampUtc.ToLocalTime().ToString("g"). These are discovery-screen results; full technical evaluation is created only after selection and queued processing.</p>
+                                    @if (item.Source == CandidateSourceType.AiCatalyst)
+                                    {
+                                        var portfolioFit = factors.FirstOrDefault(factor => factor.MetricKey == "AI.PortfolioFit")?.Explanation;
+                                        var risks = factors.FirstOrDefault(factor => factor.MetricKey == "AI.KeyRisks")?.Explanation;
+                                        var evaluationContext = factors.FirstOrDefault(factor => factor.MetricKey == "AI.EducationalContext")?.Explanation;
+                                        <dl class="candidate-detail-list mb-3">
+                                            <dt>Portfolio fit</dt><dd>@(portfolioFit ?? "No portfolio-fit note was recorded.")</dd>
+                                            <dt>Key risks</dt><dd>@(risks ?? "No preliminary risk note was recorded.")</dd>
+                                            <dt>What the full evaluation will inspect</dt><dd>@(evaluationContext ?? "No evaluation guidance was recorded.")</dd>
+                                        </dl>
+                                    }
+                                    else if (factors.Count == 0)
+                                    {
+                                        <p class="mb-3">This candidate was entered manually, so no deterministic screening rules were applied.</p>
+                                    }
+                                    else
+                                    {
+                                        <div class="table-responsive mb-3"><table class="table table-sm">
+                                            <thead><tr><th>Rule</th><th>Outcome</th><th>Explanation</th><th>Score contribution</th></tr></thead>
+                                            <tbody>@foreach (var factor in factors) { <tr><th scope="row">@factor.RuleName</th><td><span class="badge @OutcomeClass(factor.Outcome)">@factor.Outcome</span></td><td>@factor.Explanation</td><td>@factor.ScoreContribution.ToString("0.##")</td></tr> }</tbody>
+                                        </table></div>
+                                    }
+                                    <h3 class="h6">Evidence</h3>
+                                    @if (evidence.Count == 0) { <p class="small text-body-secondary mb-0">No external evidence was attached to this candidate.</p> }
+                                    else if (item.Source == CandidateSourceType.AiCatalyst) { <ul class="mb-0">@foreach (var source in evidence) { <li><a href="@source.Source" target="_blank" rel="noopener noreferrer">@source.Title</a></li> }</ul> }
+                                    else { <ul class="mb-0">@foreach (var source in evidence) { <li><a href="@source.Source" target="_blank" rel="noopener noreferrer">@source.Title</a> — @source.Summary <span class="text-body-secondary">(@source.Quality, retrieved @source.RetrievedUtc.ToLocalTime().ToString("g"))</span></li> }</ul> }
+                                </div>
+                            </td>
+                        </tr>
+                    }
                 }
                 </tbody>
             </table>
@@ -74,6 +120,10 @@
     private bool isBusy = true;
     private bool isError;
     private string? message;
+    private readonly HashSet<Guid> expanded = [];
+    private Guid? actionsFor;
+    private Guid? evaluationOpening;
+    private IReadOnlyDictionary<Guid, EvaluationJobDetails> latestEvaluations = new Dictionary<Guid, EvaluationJobDetails>();
 
     protected override async Task OnInitializedAsync()
     {
@@ -93,12 +143,40 @@
         isBusy = true;
         message = null;
         items = await InboxService.GetInboxAsync(userExternalId);
+        latestEvaluations = (await EvaluationJobService.GetJobsAsync(userExternalId))
+            .GroupBy(job => job.CandidateExternalId)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(job => job.CreatedUtc).First());
         isBusy = false;
+    }
+
+    private async Task OpenEvaluationAsync(CandidateInboxItem item)
+    {
+        evaluationOpening = item.ExternalId;
+        try
+        {
+            var jobExternalId = latestEvaluations.TryGetValue(item.ExternalId, out var existing)
+                ? existing.ExternalId
+                : await EvaluationJobService.EnqueueSelectedCandidateAsync(userExternalId, item.ExternalId);
+            await DialogService.OpenAsync<FinancialCharts>($"Full Evaluation: {item.Symbol}",
+                new Dictionary<string, object?> { [nameof(FinancialCharts.JobExternalId)] = jobExternalId, [nameof(FinancialCharts.IsDialog)] = true },
+                new DialogOptions { Width = "95vw", Height = "92vh", CssClass = "rts-evaluation-dialog", Resizable = true, Draggable = true, CloseDialogOnOverlayClick = false });
+            await LoadAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            isError = true;
+            message = exception.Message;
+        }
+        finally
+        {
+            evaluationOpening = null;
+        }
     }
 
     private async Task ChangeStatusAsync(CandidateInboxItem item, CandidateWorkflowStatus status)
     {
         isBusy = true;
+        actionsFor = null;
         var changed = await InboxService.SetStatusAsync(userExternalId, item.ExternalId, status, item.RowVersion);
         isError = !changed;
         message = changed ? $"{item.Symbol} is now {status}." : "The candidate changed elsewhere or the requested transition is not allowed. Refresh and try again.";
@@ -106,24 +184,49 @@
         isBusy = false;
     }
 
-    private async Task QueueAsync(CandidateInboxItem item)
-    {
-        isBusy = true;
-        try
-        {
-            await EvaluationJobService.EnqueueSelectedCandidateAsync(userExternalId, item.ExternalId);
-            isError = false;
-            message = $"{item.Symbol} was queued for evaluation.";
-        }
-        catch (InvalidOperationException exception)
-        {
-            isError = true;
-            message = exception.Message;
-        }
-        items = await InboxService.GetInboxAsync(userExternalId);
-        isBusy = false;
-    }
-
-    private static bool CanSelect(CandidateWorkflowStatus status) => status is CandidateWorkflowStatus.Proposed or CandidateWorkflowStatus.Deferred;
+    private static bool CanEvaluate(CandidateInboxItem item) => item.HasEvaluationJob || item.Status is CandidateWorkflowStatus.Proposed or CandidateWorkflowStatus.Deferred or CandidateWorkflowStatus.Selected;
+    private static bool CanDisposition(CandidateInboxItem item) => item.Status is not (CandidateWorkflowStatus.Rejected or CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated);
+    private static decimal DisplayScore(CandidateInboxItem item) => item.Source == CandidateSourceType.AiCatalyst && item.Score is > 0 and <= 1 ? item.Score * 100 : item.Score;
+    private static ScreeningOutcome DisplayOutcome(CandidateInboxItem item) => item.Source == CandidateSourceType.AiCatalyst
+        ? DisplayScore(item) >= 80 ? ScreeningOutcome.Passed : ScreeningOutcome.Warning
+        : item.Outcome;
     private static string OutcomeClass(ScreeningOutcome outcome) => outcome switch { ScreeningOutcome.Passed => "text-bg-success", ScreeningOutcome.Warning => "text-bg-warning", _ => "text-bg-danger" };
+    private static string ReviewMessage(CandidateInboxItem item) => IsPass(item) ? "Pass" : "Early watch";
+    private static string ReviewMeaning(CandidateInboxItem item) => IsPass(item)
+        ? "Insufficient quality, broken structure, failed gate, or unfavorable risk/reward."
+        : "Promising candidate that is not yet actionable; requires a promotion trigger and review date.";
+    private static string ReviewClass(CandidateInboxItem item) => IsPass(item) ? "text-bg-secondary" : "text-bg-warning";
+    private static bool IsPass(CandidateInboxItem item) => item.Status is CandidateWorkflowStatus.Rejected or CandidateWorkflowStatus.Excluded
+        || DisplayOutcome(item) == ScreeningOutcome.Failed;
+    private static string CandidateReason(CandidateInboxItem item)
+    {
+        var factors = ReadFactors(item);
+        if (item.Source == CandidateSourceType.AiCatalyst)
+            return ActionableReason(factors.FirstOrDefault(factor => factor.MetricKey == "AI.PrimaryThesis")?.Explanation)
+                ?? "Preliminary AI candidate for further review.";
+        return item.Source == CandidateSourceType.Manual
+            ? "Manually added candidate; needs charts."
+            : "Passed the initial liquidity, growth, and valuation screen; needs charts.";
+    }
+    private static string? ActionableReason(string? explanation)
+    {
+        if (string.IsNullOrWhiteSpace(explanation)) return null;
+        var sentences = explanation.Split(". ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var signals = new[] { "%", "earnings", "revenue", "guidance", "growth", "momentum", "demand", "reported", "valuation", "price", "quarter", "profit", "margin" };
+        var text = sentences.FirstOrDefault(sentence => signals.Any(signal => sentence.Contains(signal, StringComparison.OrdinalIgnoreCase)))
+            ?? sentences[0];
+        var urlStart = text.IndexOf("http", StringComparison.OrdinalIgnoreCase);
+        if (urlStart >= 0) text = text[..urlStart].TrimEnd('(', '[', ' ');
+        text = text.Trim().TrimEnd('.', ',', ';', ':');
+        if (text.Length > 155)
+        {
+            var cutoff = text.LastIndexOf(' ', 152);
+            text = $"{text[..(cutoff > 0 ? cutoff : 152)].TrimEnd('.', ',', ';', ':')}…";
+        }
+        return text.Contains("needs chart", StringComparison.OrdinalIgnoreCase) ? text : $"{text}; needs charts.";
+    }
+    private void ToggleDetails(Guid candidateExternalId) { if (!expanded.Add(candidateExternalId)) expanded.Remove(candidateExternalId); }
+    private void ToggleActions(Guid candidateExternalId) => actionsFor = actionsFor == candidateExternalId ? null : candidateExternalId;
+    private static IReadOnlyCollection<RuleExplanation> ReadFactors(CandidateInboxItem item) => JsonSerializer.Deserialize<RuleExplanation[]>(item.FactorsJson) ?? [];
+    private static IReadOnlyCollection<CandidateEvidence> ReadEvidence(CandidateInboxItem item) => JsonSerializer.Deserialize<CandidateEvidence[]>(item.EvidenceJson) ?? [];
 }

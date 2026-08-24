@@ -1,0 +1,139 @@
+@page "/evaluation-jobs/{JobExternalId:guid}/charts"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.Charting
+@using RTS.Application.EvaluationJobs
+@using RTS.Domain.TradingModels.Timeframes
+@using RTS.Web.Identity
+@inject IFinancialChartService ChartService
+@inject IChartEvaluationConfigurationProvider EvaluationConfigurationProvider
+@inject IEvaluationJobService EvaluationJobService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Full Evaluation</PageTitle>
+
+<section class="py-4 rts-evaluation" aria-labelledby="charts-heading">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>@if (!IsDialog) { <nav class="d-flex gap-3" aria-label="Evaluation navigation"><a href="/candidates">← Candidate Inbox</a><a href="/evaluation-jobs">Evaluation History</a></nav><h1 id="charts-heading" class="h2 mt-2">Full Evaluation@(job is null ? null : $": {job.Symbol}")</h1> }@if (job is not null) { <p class="text-body-secondary mb-0">Data preparation: @job.Status · @job.ProgressPercent% @job.ProgressMessage</p> }</div>
+        <div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-primary" @onclick="RerunAsync" disabled="@(isBusy || isRerunning || job is null)">@(isRerunning ? "Starting…" : "Re-do evaluation")</button><button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@isBusy">Refresh data</button></div>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert alert-danger">@error</div> }
+    else if (isBusy) { <p>Loading normalized market data…</p> }
+    else if (views.Count == 0)
+    {
+        <div class="card"><div class="card-body"><h2 class="h5">Evaluation is being prepared</h2><p class="mb-0 text-body-secondary">The evaluation worker is retrieving market data and building the chart views. Use Refresh evaluation in a moment.</p></div></div>
+    }
+    else
+    {
+        <div class="alert alert-info" role="status">
+            <strong>Market data is ready.</strong> Price, volume, Bollinger Bands, SMA50, MACD, and RSI are calculated below. The percentages above describe data and chart preparation; timeframe findings, scores, and explanations are the next evaluation stage.
+        </div>
+        <div class="rts-evaluation-results">
+        @if (evaluation is not null)
+        {
+            <div class="card mb-4 rts-evaluation-summary"><div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div><h2 class="h4 mb-1">Technical evaluation</h2><p class="small text-body-secondary mb-1">@evaluation.ConfigurationName · version @evaluation.ConfigurationVersion</p><p class="text-body-secondary mb-0">@evaluation.Explanation</p></div><span class="badge rounded-pill fs-6 @ToneClass(evaluation.Tone)">@evaluation.OverallScore.ToString("0.0") / 100 · @(evaluation.PassedMandatoryGates ? ToneLabel(evaluation.Tone) : "Gate failed")</span></div>
+                <div class="row g-3 mt-1">@foreach (var timeframe in evaluation.Timeframes) { <div class="col-12 col-lg-4"><div class="border rounded p-3 h-100"><div class="d-flex justify-content-between"><h3 class="h5">@timeframe.TimeframeName</h3><span class="badge @ToneClass(timeframe.Tone)">@(timeframe.PassedMandatoryGates ? timeframe.Score.ToString("0.0") : "Gate failed")</span></div><ul class="list-unstyled mb-0">@foreach (var finding in timeframe.Findings) { <li class="mb-2"><strong>@finding.Name:</strong> @finding.Explanation @if (finding.Purpose == RTS.Domain.Rules.RulePurpose.Score) { <span class="text-body-secondary">(@finding.Contribution.ToString("0.#")/@finding.Weight.ToString("0.#"))</span> }</li> }</ul></div></div> }</div>
+            </div></div>
+        }
+        <div class="rts-market-charts">
+        <h2 class="h4">Market data and charts</h2>
+        <p class="text-body-secondary">Choose a timeframe. Data was prepared for @views.Count of @InitialChartSpecification.Views.Count configured views.</p>
+        <div class="btn-group mb-3 rts-timeframe-selector" role="group" aria-label="Chart timeframe">
+            @foreach (var view in views) { <button class="btn @(selected?.Definition.Key == view.Definition.Key ? "btn-primary" : "btn-outline-primary")" @onclick="() => selected = view">@view.Definition.Key · @view.Definition.BarIntervalValue @FormatInterval(view.Definition.BarIntervalUnit)</button> }
+        </div>
+        @if (selected is not null)
+        {
+            <div class="card mb-4 rts-chart-card"><div class="card-body">
+                <div class="d-flex justify-content-between"><div><h2 class="h4">@selected.Definition.Name price</h2><p class="text-body-secondary">@selected.Definition.BarIntervalValue @selected.Definition.BarIntervalUnit bars · @selected.ProviderKey</p></div><small>Retrieved @selected.RetrievedUtc.ToLocalTime().ToString("g")</small></div>
+                <RadzenChart Style="width:100%; height:22rem;" class="rts-financial-chart">
+                    <RadzenChartTooltipOptions Shared="true" Trigger="ChartTooltipTrigger.Axis" HighlightDataPoint="true" />
+                    <RadzenLegend Position="LegendPosition.Bottom" />
+                    <RadzenLineSeries Data="@selected.Points" CategoryProperty="TimestampUtc" ValueProperty="Close" Title="Close" LineType="LineType.Solid" />
+                    <RadzenLineSeries Data="@WithValue(point => point.Sma50)" CategoryProperty="TimestampUtc" ValueProperty="Sma50" Title="SMA50" LineType="LineType.Solid" />
+                    <RadzenLineSeries Data="@WithValue(point => point.BollingerUpper)" CategoryProperty="TimestampUtc" ValueProperty="BollingerUpper" Title="Bollinger upper" LineType="LineType.Dashed" />
+                    <RadzenLineSeries Data="@WithValue(point => point.BollingerMiddle)" CategoryProperty="TimestampUtc" ValueProperty="BollingerMiddle" Title="Bollinger middle" LineType="LineType.Dashed" />
+                    <RadzenLineSeries Data="@WithValue(point => point.BollingerLower)" CategoryProperty="TimestampUtc" ValueProperty="BollingerLower" Title="Bollinger lower" LineType="LineType.Dashed" />
+                    <RadzenCategoryAxis Padding="20"><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis>
+                    <RadzenValueAxis Formatter="@(value => string.Format("{0:C2}", value))" />
+                </RadzenChart>
+            </div></div>
+            <div class="card rts-chart-card"><div class="card-body"><h2 class="h4">Volume</h2>
+                <RadzenChart Style="width:100%; height:15rem;" class="rts-financial-chart"><RadzenChartTooltipOptions Trigger="ChartTooltipTrigger.Axis" HighlightDataPoint="true" /><RadzenLegend Visible="false" /><RadzenColumnSeries Data="@selected.Points" CategoryProperty="TimestampUtc" ValueProperty="Volume" Title="Volume" /><RadzenCategoryAxis><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis></RadzenChart>
+            </div></div>
+            <div class="card mt-4 rts-chart-card"><div class="card-body"><h2 class="h4">MACD (12, 26, 9)</h2>
+                <RadzenChart Style="width:100%; height:16rem;" class="rts-financial-chart"><RadzenChartTooltipOptions Shared="true" Trigger="ChartTooltipTrigger.Axis" HighlightDataPoint="true" /><RadzenLegend Position="LegendPosition.Bottom" /><RadzenLineSeries Data="@WithValue(point => point.Macd)" CategoryProperty="TimestampUtc" ValueProperty="Macd" Title="MACD" /><RadzenLineSeries Data="@WithValue(point => point.MacdSignal)" CategoryProperty="TimestampUtc" ValueProperty="MacdSignal" Title="Signal" /><RadzenColumnSeries Data="@WithValue(point => point.MacdHistogram)" CategoryProperty="TimestampUtc" ValueProperty="MacdHistogram" Title="Histogram" /><RadzenCategoryAxis><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis></RadzenChart>
+            </div></div>
+            <div class="card mt-4 rts-chart-card"><div class="card-body"><h2 class="h4">RSI (14)</h2>
+                <RadzenChart Style="width:100%; height:15rem;" class="rts-financial-chart"><RadzenChartTooltipOptions Trigger="ChartTooltipTrigger.Axis" HighlightDataPoint="true" /><RadzenLegend Visible="false" /><RadzenLineSeries Data="@WithValue(point => point.Rsi)" CategoryProperty="TimestampUtc" ValueProperty="Rsi" Title="RSI" /><RadzenCategoryAxis><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis><RadzenValueAxis Min="0" Max="100" /></RadzenChart>
+                <p class="small text-body-secondary mb-0">Missing intervals: @selected.MissingBarsUtc.Count.</p>
+            </div></div>
+        }
+        </div>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid JobExternalId { get; set; }
+    [Parameter] public bool IsDialog { get; set; }
+    private IReadOnlyCollection<FinancialChartView> views = [];
+    private FinancialChartView? selected;
+    private EvaluationJobDetails? job;
+    private ChartEvaluationSummary? evaluation;
+    private bool isBusy = true;
+    private bool isRerunning;
+    private string? error;
+
+    private static string FormatInterval(BarIntervalUnit unit) =>
+        unit == BarIntervalUnit.Minutes ? "minute" : "day";
+
+    private IEnumerable<FinancialChartPoint> WithValue(Func<FinancialChartPoint, decimal?> selector) =>
+        selected?.Points.Where(point => selector(point).HasValue) ?? [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isBusy = true;
+        error = null;
+        var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        if (!principal.TryGetExternalUserId(out var userExternalId)) { error = "Your user identifier is unavailable."; isBusy = false; return; }
+        try
+        {
+            job = (await EvaluationJobService.GetJobsAsync(userExternalId)).SingleOrDefault(item => item.ExternalId == JobExternalId)
+                ?? throw new InvalidOperationException("The evaluation job could not be found.");
+            views = await ChartService.GetViewsAsync(userExternalId, JobExternalId);
+            var configuration = await EvaluationConfigurationProvider.GetAsync(userExternalId);
+            evaluation = InitialChartEvaluator.Evaluate(views, configuration);
+            selected = views.FirstOrDefault(view => view.Definition.Key == selected?.Definition.Key) ?? views.FirstOrDefault();
+        }
+        catch (InvalidOperationException exception) { error = exception.Message; }
+        isBusy = false;
+    }
+
+    private static string ToneLabel(TechnicalFindingTone tone) => tone switch { TechnicalFindingTone.Bullish => "Constructive", TechnicalFindingTone.Neutral => "Mixed", TechnicalFindingTone.Bearish => "Weak", _ => "Unavailable" };
+    private static string ToneClass(TechnicalFindingTone tone) => tone switch { TechnicalFindingTone.Bullish => "text-bg-success", TechnicalFindingTone.Neutral => "text-bg-warning", TechnicalFindingTone.Bearish => "text-bg-danger", _ => "text-bg-secondary" };
+
+    private async Task RerunAsync()
+    {
+        if (job is null) return;
+        isRerunning = true;
+        error = null;
+        try
+        {
+            var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            if (!principal.TryGetExternalUserId(out var userExternalId))
+                throw new InvalidOperationException("Your user identifier is unavailable.");
+            JobExternalId = await EvaluationJobService.EnqueueSelectedCandidateAsync(userExternalId, job.CandidateExternalId, forceNew: true);
+            selected = null;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException exception) { error = exception.Message; }
+        finally { isRerunning = false; }
+    }
+}

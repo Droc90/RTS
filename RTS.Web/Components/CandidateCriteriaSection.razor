@@ -1,0 +1,8 @@
+<details class="card mb-3"><summary class="card-header candidate-settings-summary">@Title</summary><div class="card-body"><div class="row g-2">@foreach (var criterion in Criteria) { var id = $"criterion-{Title.GetHashCode():x}-{criterion.GetHashCode():x}"; <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" id="@id" checked="@Selected.Contains(criterion)" @onchange="args => SetCriterion(criterion, (bool?)args.Value == true)" /><label class="form-check-label" for="@id">@criterion</label></div></div> }</div></div></details>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public IReadOnlyCollection<string> Criteria { get; set; } = [];
+    [Parameter, EditorRequired] public HashSet<string> Selected { get; set; } = [];
+    private void SetCriterion(string criterion, bool enabled) { if (enabled) Selected.Add(criterion); else Selected.Remove(criterion); }
+}

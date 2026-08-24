@@ -56,6 +56,7 @@ public sealed class CandidateInboxService(RtsDbContext dbContext) : ICandidateIn
     {
         var ownerId = await GetActiveUserIdAsync(userExternalId, cancellationToken);
         return await dbContext.DiscoveryCandidates.AsNoTracking()
+            .Where(candidate => candidate.Status != CandidateWorkflowStatus.Rejected)
             .Join(dbContext.DiscoveryRuns.Where(run => run.OwnerUserId == ownerId), candidate => candidate.DiscoveryRunId, run => run.Id,
                 (candidate, run) => new { Candidate = candidate, RunExternalId = run.ExternalId })
             .OrderBy(item => item.Candidate.Status)
@@ -65,7 +66,9 @@ public sealed class CandidateInboxService(RtsDbContext dbContext) : ICandidateIn
                 item.Candidate.ExternalId, item.RunExternalId, item.Candidate.Symbol,
                 item.Candidate.AssetType, item.Candidate.Source, item.Candidate.Outcome,
                 item.Candidate.Score, item.Candidate.Rank, item.Candidate.DataTimestampUtc,
-                item.Candidate.Status, item.Candidate.FactorsJson, item.Candidate.EvidenceJson,
+                item.Candidate.Status,
+                dbContext.EvaluationJobs.Any(job => job.DiscoveryCandidateId == item.Candidate.Id),
+                item.Candidate.FactorsJson, item.Candidate.EvidenceJson,
                 item.Candidate.RowVersion))
             .ToArrayAsync(cancellationToken);
     }

@@ -13,6 +13,7 @@ public sealed record CandidateInboxItem(
     int Rank,
     DateTime DataTimestampUtc,
     CandidateWorkflowStatus Status,
+    bool HasEvaluationJob,
     string FactorsJson,
     string EvidenceJson,
     byte[] RowVersion);

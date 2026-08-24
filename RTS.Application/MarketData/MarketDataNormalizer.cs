@@ -22,6 +22,9 @@ public sealed class MarketDataNormalizer : IMarketDataNormalizer
             .OrderBy(bar => bar.TimestampUtc)
             .ToArray();
 
+        if (normalized.Length == 0)
+            throw new InvalidOperationException("No usable market-data bars remain after applying the configured session rules.");
+
         foreach (var bar in normalized) ValidateBar(bar, request.AdjustForCorporateActions);
         if (normalized.Select(bar => bar.TimestampUtc).Distinct().Count() != normalized.Length)
             throw new InvalidOperationException("Market data contains duplicate bar timestamps.");

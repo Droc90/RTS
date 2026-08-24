@@ -8,7 +8,7 @@ namespace RTS.Infrastructure.EvaluationJobs;
 
 public sealed class EvaluationJobService(RtsDbContext dbContext) : IEvaluationJobService
 {
-    public async Task<Guid> EnqueueSelectedCandidateAsync(Guid userExternalId, Guid candidateExternalId, CancellationToken cancellationToken = default)
+    public async Task<Guid> EnqueueSelectedCandidateAsync(Guid userExternalId, Guid candidateExternalId, bool forceNew = false, CancellationToken cancellationToken = default)
     {
         var ownerId = await GetOwnerIdAsync(userExternalId, cancellationToken);
         var candidate = await dbContext.DiscoveryCandidates.SingleOrDefaultAsync(item =>
@@ -16,11 +16,25 @@ public sealed class EvaluationJobService(RtsDbContext dbContext) : IEvaluationJo
             dbContext.DiscoveryRuns.Any(run => run.Id == item.DiscoveryRunId && run.OwnerUserId == ownerId), cancellationToken)
             ?? throw new InvalidOperationException("The candidate could not be found.");
 
-        if (!CandidateWorkflow.IsApprovedForFullEvaluation(candidate.Status))
-            throw new InvalidOperationException("The candidate must be explicitly selected before evaluation can be queued.");
-        if (await dbContext.EvaluationJobs.AnyAsync(job => job.DiscoveryCandidateId == candidate.Id &&
-            job.Status != EvaluationJobStatus.Failed && job.Status != EvaluationJobStatus.Cancelled, cancellationToken))
-            throw new InvalidOperationException("An active or completed evaluation already exists for this candidate.");
+        if (!forceNew)
+        {
+            var existingJobExternalId = await dbContext.EvaluationJobs
+                .Where(job => job.DiscoveryCandidateId == candidate.Id)
+                .OrderByDescending(job => job.CreatedUtc)
+                .Select(job => (Guid?)job.ExternalId)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (existingJobExternalId is not null) return existingJobExternalId.Value;
+        }
+
+        if (candidate.Status is CandidateWorkflowStatus.Proposed or CandidateWorkflowStatus.Deferred)
+        {
+            candidate.Status = CandidateWorkflowStatus.Selected;
+            candidate.ModifiedUtc = DateTime.UtcNow;
+        }
+        else if (!CandidateWorkflow.IsApprovedForFullEvaluation(candidate.Status))
+        {
+            throw new InvalidOperationException("This candidate is not eligible for a full evaluation.");
+        }
 
         var job = new EvaluationJob
         {
@@ -36,6 +50,7 @@ public sealed class EvaluationJobService(RtsDbContext dbContext) : IEvaluationJo
     public async Task<IReadOnlyCollection<EvaluationJobDetails>> GetJobsAsync(Guid userExternalId, CancellationToken cancellationToken = default)
     {
         var ownerId = await GetOwnerIdAsync(userExternalId, cancellationToken);
+        var cancelledArchiveCutoffUtc = DateTime.UtcNow - EvaluationJobRetentionPolicy.CancelledArchiveAfter;
         return await dbContext.EvaluationJobs.AsNoTracking().Where(job => job.OwnerUserId == ownerId)
             .Join(dbContext.DiscoveryCandidates, job => job.DiscoveryCandidateId, candidate => candidate.Id,
                 (job, candidate) => new { Job = job, CandidateExternalId = candidate.ExternalId })
@@ -44,7 +59,9 @@ public sealed class EvaluationJobService(RtsDbContext dbContext) : IEvaluationJo
                 item.Job.ExternalId, item.CandidateExternalId, item.Job.Symbol, item.Job.Status,
                 item.Job.ProgressPercent, item.Job.ProgressMessage, item.Job.ErrorMessage,
                 item.Job.AttemptCount, item.Job.CreatedUtc, item.Job.StartedUtc,
-                item.Job.CompletedUtc, item.Job.RowVersion))
+                item.Job.CompletedUtc,
+                item.Job.Status == EvaluationJobStatus.Cancelled && item.Job.CompletedUtc < cancelledArchiveCutoffUtc,
+                item.Job.RowVersion))
             .ToArrayAsync(cancellationToken);
     }
 
