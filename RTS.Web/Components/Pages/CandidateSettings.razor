@@ -1,0 +1,115 @@
+@page "/candidate-settings"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.CandidateDiscovery
+@using RTS.Web.Identity
+@inject ICandidateIdentificationSettingsService SettingsService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Candidate Settings</PageTitle>
+
+<section class="py-4" aria-labelledby="settings-heading">
+    <div class="mb-4"><a href="/candidates">← Candidate Inbox</a><h1 id="settings-heading" class="h2 mt-2">Candidate Identification Settings</h1><p class="text-body-secondary">Control which securities deserve to appear on a candidate list. Technical structure, entry readiness, entry levels, stops, and targets are configured later in chart evaluation.</p></div>
+    @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(isError ? "alert-danger" : "alert-success")" role="status">@message</div> }
+    @if (isLoading) { <p>Loading candidate settings…</p> }
+    else
+    {
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <fieldset disabled="@isSaving">
+                <details class="card mb-3" open><summary class="card-header candidate-settings-summary">Universe</summary><div class="card-body"><div class="row g-3">
+                    <div class="col-md-4"><div class="form-check"><InputCheckbox class="form-check-input" id="include-stocks" @bind-Value="model.IncludeStocks" /><label class="form-check-label" for="include-stocks">Stocks</label></div><div class="form-check"><InputCheckbox class="form-check-input" id="include-etfs" @bind-Value="model.IncludeEtfs" /><label class="form-check-label" for="include-etfs">ETFs</label></div></div>
+                    <div class="col-md-8"><label class="form-label" for="exchanges">Eligible exchanges/listings</label><InputText class="form-control" id="exchanges" @bind-Value="model.EligibleExchanges" /></div>
+                    <div class="col-md-3"><label class="form-label" for="minimum-price">Minimum share price</label><InputNumber class="form-control" id="minimum-price" @bind-Value="model.MinimumSharePrice" /></div>
+                    <CandidateSettingToggle Id="require-schwab" Label="Require Schwab/thinkorswim tradability" @bind-Value="model.RequireSchwabTradability" />
+                    <CandidateSettingToggle Id="fractional" Label="Assume fractional shares are available" @bind-Value="model.AssumeFractionalSharesAvailable" />
+                    <CandidateSettingToggle Id="include-otc" Label="Include OTC securities" @bind-Value="model.IncludeOtcSecurities" />
+                    <CandidateSettingToggle Id="leveraged-etfs" Label="Include leveraged/inverse ETFs" @bind-Value="model.IncludeLeveragedInverseEtfs" />
+                    <CandidateSettingToggle Id="previously-reviewed" Label="Include previously reviewed candidates" @bind-Value="model.IncludePreviouslyReviewed" />
+                    <CandidateSettingToggle Id="rejected" Label="Include rejected candidates" @bind-Value="model.IncludeRejected" />
+                </div></div></details>
+
+                <details class="card mb-3"><summary class="card-header candidate-settings-summary">Liquidity Fast Gate</summary><div class="card-body"><div class="row g-3">
+                    <div class="col-md-3"><label class="form-label" for="minimum-volume">Minimum 20-day average volume</label><InputNumber class="form-control" id="minimum-volume" @bind-Value="model.MinimumAverageDailyVolume" /></div>
+                    <div class="col-md-3"><label class="form-label" for="minimum-dollar-volume">Minimum average dollar volume</label><InputNumber class="form-control" id="minimum-dollar-volume" @bind-Value="model.MinimumAverageDollarVolume" /></div>
+                    <div class="col-md-3"><label class="form-label" for="maximum-spread">Maximum spread (%)</label><InputNumber class="form-control" id="maximum-spread" @bind-Value="model.MaximumBidAskSpreadPercent" /></div>
+                    <div class="col-md-3"><label class="form-label" for="preferred-spread">Preferred spread (%)</label><InputNumber class="form-control" id="preferred-spread" @bind-Value="model.PreferredBidAskSpreadPercent" /></div>
+                    <CandidateSettingToggle Id="execution" Label="Require reliable order execution" @bind-Value="model.RequireReliableExecution" />
+                    <CandidateSettingToggle Id="current-data" Label="Require current and consistent market data" @bind-Value="model.RequireCurrentConsistentMarketData" />
+                </div></div></details>
+
+                <CandidateCriteriaSection Title="Fundamental quality" Criteria="CandidateIdentificationCriteria.Fundamentals" Selected="model.Fundamentals" />
+                <CandidateCriteriaSection Title="Catalyst identification" Criteria="CandidateIdentificationCriteria.Catalysts" Selected="model.Catalysts" />
+                <CandidateCriteriaSection Title="Risk and red-flag screening" Criteria="CandidateIdentificationCriteria.RiskFlags" Selected="model.RiskFlags" />
+
+                <details class="card mb-3"><summary class="card-header candidate-settings-summary">Portfolio eligibility</summary><div class="card-body"><div class="row g-3">
+                    <CandidateSettingToggle Id="one-share" Label="Require one-share affordability" @bind-Value="model.RequireOneShareAffordability" />
+                    <div class="col-md-3"><label class="form-label" for="initial-position">Maximum initial position (%)</label><InputNumber class="form-control" id="initial-position" @bind-Value="model.MaximumInitialPositionPercent" /></div>
+                    <div class="col-md-3"><label class="form-label" for="single-name">Hard single-name cap (%)</label><InputNumber class="form-control" id="single-name" @bind-Value="model.HardSingleNameCapPercent" /></div>
+                    <div class="col-md-3"><label class="form-label" for="sector-cap">Maximum sector exposure (%)</label><InputNumber class="form-control" id="sector-cap" @bind-Value="model.MaximumSectorExposurePercent" /></div>
+                    <div class="col-md-3"><label class="form-label" for="cluster-cap">Maximum correlated cluster (%)</label><InputNumber class="form-control" id="cluster-cap" @bind-Value="model.MaximumCorrelatedClusterExposurePercent" /></div>
+                    <div class="col-md-3"><label class="form-label" for="available-cash">Available cash (optional)</label><InputNumber class="form-control" id="available-cash" @bind-Value="model.AvailableCash" /></div>
+                    <CandidateSettingToggle Id="sector-overlap" Label="Consider existing sector/industry overlap" @bind-Value="model.ConsiderExistingSectorOverlap" />
+                    <CandidateSettingToggle Id="diversification" Label="Require a diversification benefit" @bind-Value="model.RequireDiversificationBenefit" />
+                </div></div></details>
+
+                <CandidateCriteriaSection Title="ETF-specific identification" Criteria="CandidateIdentificationCriteria.EtfCriteria" Selected="model.EtfCriteria" />
+                <button type="submit" class="btn btn-primary">@(isSaving ? "Saving…" : "Save candidate settings")</button>
+            </fieldset>
+        </EditForm>
+    }
+</section>
+
+@code {
+    private readonly SettingsModel model = new();
+    private Guid userExternalId;
+    private byte[] rowVersion = [];
+    private bool isLoading = true;
+    private bool isSaving;
+    private bool isError;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        if (!principal.TryGetExternalUserId(out userExternalId)) { isError = true; message = "Your user identifier is unavailable."; isLoading = false; return; }
+        try { Apply(await SettingsService.GetOrCreateAsync(userExternalId)); }
+        catch (Exception exception) when (exception is InvalidOperationException or Microsoft.Data.SqlClient.SqlException) { isError = true; message = $"Candidate settings could not be loaded. {exception.Message}"; }
+        isLoading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        isSaving = true; message = null;
+        try { Apply(await SettingsService.SaveAsync(userExternalId, model.ToSettings(), rowVersion)); isError = false; message = "Candidate-identification settings saved."; }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException) { isError = true; message = exception.Message; }
+        isSaving = false;
+    }
+
+    private void Apply(CandidateIdentificationSettingsDetails details) { model.Apply(details.Settings); rowVersion = details.RowVersion; }
+
+    private sealed class SettingsModel
+    {
+        public bool IncludeStocks { get; set; } public bool IncludeEtfs { get; set; } public string EligibleExchanges { get; set; } = string.Empty;
+        public bool RequireSchwabTradability { get; set; } public decimal MinimumSharePrice { get; set; } public bool AssumeFractionalSharesAvailable { get; set; }
+        public bool IncludeOtcSecurities { get; set; } public bool IncludeLeveragedInverseEtfs { get; set; } public bool IncludePreviouslyReviewed { get; set; } public bool IncludeRejected { get; set; }
+        public long MinimumAverageDailyVolume { get; set; } public decimal MinimumAverageDollarVolume { get; set; } public decimal MaximumBidAskSpreadPercent { get; set; } public decimal PreferredBidAskSpreadPercent { get; set; }
+        public bool RequireReliableExecution { get; set; } public bool RequireCurrentConsistentMarketData { get; set; }
+        public HashSet<string> Fundamentals { get; } = []; public HashSet<string> Catalysts { get; } = []; public HashSet<string> RiskFlags { get; } = []; public HashSet<string> EtfCriteria { get; } = [];
+        public bool RequireOneShareAffordability { get; set; } public decimal MaximumInitialPositionPercent { get; set; } public decimal HardSingleNameCapPercent { get; set; }
+        public decimal MaximumSectorExposurePercent { get; set; } public decimal MaximumCorrelatedClusterExposurePercent { get; set; } public bool ConsiderExistingSectorOverlap { get; set; }
+        public bool RequireDiversificationBenefit { get; set; } public decimal? AvailableCash { get; set; }
+
+        public void Apply(CandidateIdentificationSettings value)
+        {
+            IncludeStocks = value.IncludeStocks; IncludeEtfs = value.IncludeEtfs; EligibleExchanges = value.EligibleExchanges; RequireSchwabTradability = value.RequireSchwabTradability; MinimumSharePrice = value.MinimumSharePrice;
+            AssumeFractionalSharesAvailable = value.AssumeFractionalSharesAvailable; IncludeOtcSecurities = value.IncludeOtcSecurities; IncludeLeveragedInverseEtfs = value.IncludeLeveragedInverseEtfs; IncludePreviouslyReviewed = value.IncludePreviouslyReviewed; IncludeRejected = value.IncludeRejected;
+            MinimumAverageDailyVolume = value.MinimumAverageDailyVolume; MinimumAverageDollarVolume = value.MinimumAverageDollarVolume; MaximumBidAskSpreadPercent = value.MaximumBidAskSpreadPercent; PreferredBidAskSpreadPercent = value.PreferredBidAskSpreadPercent;
+            RequireReliableExecution = value.RequireReliableExecution; RequireCurrentConsistentMarketData = value.RequireCurrentConsistentMarketData; Copy(Fundamentals, value.FundamentalCriteria); Copy(Catalysts, value.CatalystCriteria); Copy(RiskFlags, value.RiskFlags);
+            RequireOneShareAffordability = value.RequireOneShareAffordability; MaximumInitialPositionPercent = value.MaximumInitialPositionPercent; HardSingleNameCapPercent = value.HardSingleNameCapPercent; MaximumSectorExposurePercent = value.MaximumSectorExposurePercent;
+            MaximumCorrelatedClusterExposurePercent = value.MaximumCorrelatedClusterExposurePercent; ConsiderExistingSectorOverlap = value.ConsiderExistingSectorOverlap; RequireDiversificationBenefit = value.RequireDiversificationBenefit; AvailableCash = value.AvailableCash; Copy(EtfCriteria, value.EtfCriteria);
+        }
+        public CandidateIdentificationSettings ToSettings() => new(IncludeStocks, IncludeEtfs, EligibleExchanges, RequireSchwabTradability, MinimumSharePrice, AssumeFractionalSharesAvailable, IncludeOtcSecurities, IncludeLeveragedInverseEtfs, IncludePreviouslyReviewed, IncludeRejected, MinimumAverageDailyVolume, MinimumAverageDollarVolume, MaximumBidAskSpreadPercent, PreferredBidAskSpreadPercent, RequireReliableExecution, RequireCurrentConsistentMarketData, Fundamentals.ToArray(), Catalysts.ToArray(), RiskFlags.ToArray(), RequireOneShareAffordability, MaximumInitialPositionPercent, HardSingleNameCapPercent, MaximumSectorExposurePercent, MaximumCorrelatedClusterExposurePercent, ConsiderExistingSectorOverlap, RequireDiversificationBenefit, AvailableCash, EtfCriteria.ToArray());
+        private static void Copy(HashSet<string> target, IEnumerable<string> source) { target.Clear(); target.UnionWith(source); }
+    }
+}

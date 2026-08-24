@@ -15,6 +15,9 @@ using RTS.Infrastructure.CandidateDiscovery;
 using RTS.Application.EvaluationJobs;
 using RTS.Application.MarketData;
 using RTS.Infrastructure.EvaluationJobs;
+using RTS.Application.Charting;
+using Microsoft.Extensions.Options;
+using RTS.Infrastructure.MarketData;
 
 namespace RTS.Infrastructure;
 
@@ -96,8 +99,22 @@ public static class DependencyInjection
             ApplicationErrorAdministrationService>();
 
         services.AddScoped<ICandidateInboxService, CandidateInboxService>();
+        services.AddScoped<ICandidateIdentificationSettingsService, CandidateIdentificationSettingsService>();
+        services.AddSingleton<ICandidateDiscoveryService, CandidateDiscoveryService>();
+        services.AddScoped<ICandidateDiscoveryWorkflowService, CandidateDiscoveryWorkflowService>();
+        services.Configure<OpenAiCandidateDiscoveryOptions>(
+            configuration.GetSection(OpenAiCandidateDiscoveryOptions.SectionName));
+        services.AddScoped<IEducationalCandidateDiscoveryProvider, OpenAiEducationalCandidateDiscoveryProvider>();
         services.AddScoped<IEvaluationJobService, EvaluationJobService>();
         services.AddScoped<IMarketDataSnapshotStore, MarketDataSnapshotStore>();
+        services.Configure<AlpacaMarketDataOptions>(configuration.GetSection(AlpacaMarketDataOptions.SectionName));
+        services.AddScoped<IMarketPriceDataProvider, AlpacaMarketDataProvider>();
+        services.AddScoped<IMarketDataNormalizer, MarketDataNormalizer>();
+        services.AddScoped<IMarketDataService, MarketDataService>();
+        services.AddScoped<IEvaluationJobProcessor, MarketDataEvaluationJobProcessor>();
+        services.AddScoped<IFinancialChartService, FinancialChartService>();
+        services.AddScoped<IChartEvaluationConfigurationProvider, ChartEvaluationConfigurationProvider>();
+        services.AddHostedService<EvaluationJobWorker>();
 
         return services;
     }

@@ -1,0 +1,151 @@
+@page "/candidate-discovery"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.CandidateDiscovery
+@using RTS.Domain.CandidateDiscovery
+@using RTS.Web.Identity
+@inject ICandidateDiscoveryWorkflowService WorkflowService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Discover Candidates</PageTitle>
+
+<section class="py-4" aria-labelledby="discovery-heading">
+    <div class="mb-4">
+        <h1 id="discovery-heading" class="h2">Discover Candidates</h1>
+        <p class="text-body-secondary">Add symbols directly or run the initial deterministic screen against supplied observations.</p>
+        <div class="alert alert-info mb-0" role="note"><strong>Disclaimer:</strong> RTS provides information for general educational purposes only. It is not financial, investment, tax, or legal advice. Verify the information and make your own investment decisions.</div>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(isError ? "alert-danger" : "alert-success")" role="status">@message</div> }
+
+    <div class="row g-4">
+        <div class="col-12"><div class="card border-primary"><div class="card-body">
+            <h2 class="h4">Find new candidates with AI research</h2>
+            <p class="text-body-secondary">Research a current, cited shortlist. RTS will not queue evaluations without your selection.</p>
+            <EditForm Model="ai" OnValidSubmit="DiscoverWithAiAsync">
+                <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label" for="ai-holdings">Current holdings</label><InputText id="ai-holdings" class="form-control" @bind-Value="ai.CurrentHoldings" /><div class="form-text">Comma-separated symbols.</div></div>
+                    <div class="col-md-6"><label class="form-label" for="ai-exclusions">Excluded symbols</label><InputText id="ai-exclusions" class="form-control" @bind-Value="ai.ExcludedSymbols" /></div>
+                    <div class="col-md-4"><label class="form-label" for="ai-account">Approximate account value</label><InputNumber id="ai-account" class="form-control" @bind-Value="ai.AccountValue" /></div>
+                    <div class="col-md-4"><label class="form-label" for="ai-count">Maximum candidates</label><InputNumber id="ai-count" class="form-control" @bind-Value="ai.MaximumCandidates" /></div>
+                    <div class="col-md-4"><label class="form-label" for="ai-themes">Preferred themes</label><InputText id="ai-themes" class="form-control" @bind-Value="ai.PreferredThemes" /></div>
+                    <div class="col-12"><label class="form-label" for="ai-goals">Diversification goals</label><InputTextArea id="ai-goals" class="form-control" rows="2" @bind-Value="ai.DiversificationGoals" /></div>
+                </div>
+                <button class="btn btn-primary mt-3" disabled="@isBusy">Research candidates</button>
+                <span class="small text-body-secondary ms-2">Current-source research can take a minute and may incur provider usage charges.</span>
+            </EditForm>
+        </div></div></div>
+
+        @if (aiReport is not null)
+        {
+            <div class="col-12"><div class="card"><div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between gap-2"><h2 class="h4">Candidate shortlist</h2><a href="/candidates">Review in Candidate Inbox</a></div>
+                <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Rank</th><th>Candidate</th><th>Type</th><th>Candidate quality</th><th>Initial status</th><th>Primary thesis</th></tr></thead>
+                    <tbody>@foreach (var candidate in aiReport.Candidates) {
+                    <tr><td>@candidate.Rank</td><th scope="row">@candidate.Symbol</th><td>@candidate.TypeDescription</td><td>@candidate.CandidateQuality.ToString("0.#")</td><td>@candidate.InitialStatus</td><td>@candidate.PrimaryThesis</td></tr>
+                    }</tbody>
+                </table></div>
+            </div></div></div>
+        }
+
+        <div class="col-lg-6"><div class="card h-100"><div class="card-body">
+            <h2 class="h4">Manual candidate</h2>
+            <EditForm Model="manual" OnValidSubmit="AddManualAsync">
+                <div class="mb-3"><label class="form-label" for="manual-symbol">Symbol</label><InputText id="manual-symbol" class="form-control" @bind-Value="manual.Symbol" /></div>
+                <div class="mb-3"><label class="form-label" for="manual-type">Asset type</label><InputSelect id="manual-type" class="form-select" @bind-Value="manual.AssetType"><option value="@AssetType.CommonStock">Common stock</option><option value="@AssetType.ExchangeTradedFund">ETF</option><option value="@AssetType.AmericanDepositaryReceipt">ADR</option></InputSelect></div>
+                <button class="btn btn-primary" disabled="@isBusy">Add to inbox</button>
+            </EditForm>
+        </div></div></div>
+
+        <div class="col-lg-6"><div class="card h-100"><div class="card-body">
+            <h2 class="h4">Watchlist</h2><p class="small text-body-secondary">Enter symbols separated by commas, spaces, or new lines.</p>
+            <EditForm Model="watchlist" OnValidSubmit="AddWatchlistAsync">
+                <div class="mb-3"><label class="form-label" for="watchlist-symbols">Symbols</label><InputTextArea id="watchlist-symbols" class="form-control" rows="5" @bind-Value="watchlist.Symbols" /></div>
+                <div class="mb-3"><label class="form-label" for="watchlist-type">Asset type</label><InputSelect id="watchlist-type" class="form-select" @bind-Value="watchlist.AssetType"><option value="@AssetType.CommonStock">Common stock</option><option value="@AssetType.ExchangeTradedFund">ETF</option><option value="@AssetType.AmericanDepositaryReceipt">ADR</option></InputSelect></div>
+                <button class="btn btn-primary" disabled="@isBusy">Add watchlist</button>
+            </EditForm>
+        </div></div></div>
+
+        <div class="col-12"><div class="card"><div class="card-body">
+            <h2 class="h4">Initial deterministic screen</h2>
+            <p class="text-body-secondary">One CSV row per candidate: <code>Symbol, Price, Average daily dollar volume, Revenue growth %, Earnings growth %, Forward P/E</code>.</p>
+            <EditForm Model="screen" OnValidSubmit="RunScreenAsync">
+                <div class="mb-3"><label class="form-label" for="screen-candidates">Candidate observations</label><InputTextArea id="screen-candidates" class="form-control font-monospace" rows="7" @bind-Value="screen.Candidates" /></div>
+                <button class="btn btn-primary" disabled="@isBusy">Run screen</button>
+            </EditForm>
+        </div></div></div>
+    </div>
+</section>
+
+@code {
+    private readonly ManualModel manual = new();
+    private readonly WatchlistModel watchlist = new();
+    private readonly ScreenModel screen = new();
+    private readonly AiDiscoveryModel ai = new();
+    private EducationalDiscoveryReport? aiReport;
+    private Guid userExternalId; private bool isBusy; private bool isError; private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        if (!principal.TryGetExternalUserId(out userExternalId)) { isError = true; message = "Your user identifier is unavailable."; }
+    }
+
+    private async Task AddManualAsync() => await ExecuteAsync(async () => await WorkflowService.AddManualAsync(userExternalId, manual.Symbol, manual.AssetType), "Candidate added to the inbox.");
+    private async Task AddWatchlistAsync() => await ExecuteAsync(async () => await WorkflowService.AddWatchlistAsync(userExternalId, SplitSymbols(watchlist.Symbols), watchlist.AssetType), "Watchlist candidates added to the inbox.");
+    private async Task RunScreenAsync() => await ExecuteAsync(async () => await WorkflowService.RunDeterministicScreenAsync(userExternalId, ParseScreen(screen.Candidates)), "Deterministic screen completed.");
+    private async Task DiscoverWithAiAsync()
+    {
+        isBusy = true;
+        try
+        {
+            aiReport = await WorkflowService.DiscoverEducationalCandidatesAsync(userExternalId,
+                new EducationalDiscoveryRequest(SplitSymbols(ai.CurrentHoldings), SplitSymbols(ai.ExcludedSymbols), ai.AccountValue,
+                    SplitList(ai.PreferredThemes), ai.DiversificationGoals, ai.MaximumCandidates));
+            isError = false;
+            message = "AI research completed and the cited shortlist was saved to the Candidate Inbox.";
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or HttpRequestException or TaskCanceledException)
+        {
+            isError = true;
+            message = exception.Message;
+        }
+        isBusy = false;
+    }
+
+    private async Task ExecuteAsync(Func<Task> action, string success)
+    {
+        isBusy = true;
+        try { await action(); isError = false; message = success; }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or FormatException) { isError = true; message = exception.Message; }
+        isBusy = false;
+    }
+
+    private static string[] SplitSymbols(string value) => value.Split([',', ';', ' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    private static string[] SplitList(string value) => value.Split([',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    private static DeterministicCandidateInput[] ParseScreen(string value) => value.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select((line, index) =>
+    {
+        var parts = line.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length != 6) throw new FormatException($"Row {index + 1} must contain six comma-separated values.");
+        return new DeterministicCandidateInput(parts[0], AssetType.CommonStock,
+            decimal.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture),
+            decimal.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture),
+            decimal.Parse(parts[3], System.Globalization.CultureInfo.InvariantCulture),
+            decimal.Parse(parts[4], System.Globalization.CultureInfo.InvariantCulture),
+            decimal.Parse(parts[5], System.Globalization.CultureInfo.InvariantCulture));
+    }).ToArray();
+
+    private sealed class ManualModel { public string Symbol { get; set; } = string.Empty; public AssetType AssetType { get; set; } = AssetType.CommonStock; }
+    private sealed class WatchlistModel { public string Symbols { get; set; } = string.Empty; public AssetType AssetType { get; set; } = AssetType.CommonStock; }
+    private sealed class ScreenModel { public string Candidates { get; set; } = "MSFT, 500, 250000000, 12, 10, 30"; }
+    private sealed class AiDiscoveryModel
+    {
+        public string CurrentHoldings { get; set; } = string.Empty;
+        public string ExcludedSymbols { get; set; } = string.Empty;
+        public decimal? AccountValue { get; set; }
+        public string PreferredThemes { get; set; } = string.Empty;
+        public string? DiversificationGoals { get; set; }
+        public int MaximumCandidates { get; set; } = 8;
+    }
+}

@@ -7,25 +7,26 @@
 @inject IEvaluationJobService JobService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
-<PageTitle>Evaluation Jobs</PageTitle>
+<PageTitle>Evaluation History</PageTitle>
 
 <section class="py-4" aria-labelledby="jobs-heading">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div><h1 id="jobs-heading" class="h2 mb-1">Evaluation Jobs</h1><p class="text-body-secondary mb-0">Durable progress continues independently of this browser session.</p></div>
-        <button class="btn btn-outline-secondary" disabled="@isBusy" @onclick="LoadAsync">Refresh</button>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div><a href="/candidates">← Candidate Inbox</a><h1 id="jobs-heading" class="h2 mt-2 mb-1">Evaluation History</h1><p class="text-body-secondary mb-0">Durable progress continues independently of this browser session.</p></div>
+        <div class="d-flex gap-2">@if (ArchivedCount > 0) { <button class="btn btn-outline-secondary" @onclick="() => showArchived = !showArchived">@(showArchived ? "Hide archived" : $"Show archived ({ArchivedCount})")</button> }<a class="btn btn-outline-primary" href="/candidates">Candidate Inbox</a><button class="btn btn-outline-secondary" disabled="@isBusy" @onclick="LoadAsync">Refresh</button></div>
     </div>
     @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(isError ? "alert-danger" : "alert-success")" role="status">@message</div> }
     @if (isBusy) { <p>Loading jobs…</p> }
-    else if (jobs.Count == 0) { <div class="card"><div class="card-body">No evaluations have been queued.</div></div> }
+    else if (jobs.Count == 0) { <div class="card"><div class="card-body">No evaluations have been started.</div></div> }
+    else if (VisibleJobs.Count == 0) { <div class="card"><div class="card-body">No active evaluations. Archived cancellations are available above.</div></div> }
     else
     {
         <div class="table-responsive"><table class="table align-middle">
             <thead><tr><th>Symbol</th><th>Status</th><th>Progress</th><th>Attempts</th><th>Created</th><th>Actions</th></tr></thead>
-            <tbody>@foreach (var job in jobs) { <tr>
-                <th scope="row">@job.Symbol</th><td>@job.Status</td>
+            <tbody>@foreach (var job in VisibleJobs) { <tr>
+                <th scope="row">@job.Symbol</th><td>@(job.IsArchived ? "Archived" : job.Status)</td>
                 <td style="min-width:12rem"><div class="progress" role="progressbar" aria-valuenow="@job.ProgressPercent" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar" style="width:@($"{job.ProgressPercent}%")">@job.ProgressPercent%</div></div><small>@(job.ErrorMessage ?? job.ProgressMessage)</small></td>
                 <td>@job.AttemptCount</td><td>@job.CreatedUtc.ToLocalTime().ToString("g")</td>
-                <td><div class="d-flex gap-1"><button class="btn btn-sm btn-outline-danger" disabled="@(job.Status is not (EvaluationJobStatus.Queued or EvaluationJobStatus.Running))" @onclick="() => CancelAsync(job)">Cancel</button><button class="btn btn-sm btn-outline-primary" disabled="@(job.Status is not (EvaluationJobStatus.Failed or EvaluationJobStatus.Cancelled))" @onclick="() => RetryAsync(job)">Retry</button></div></td>
+                <td><div class="d-flex gap-1"><a class="btn btn-sm btn-outline-primary" href="@($"/evaluation-jobs/{job.ExternalId}/charts")">View evaluation</a><button class="btn btn-sm btn-outline-danger" disabled="@(job.Status is not (EvaluationJobStatus.Queued or EvaluationJobStatus.Running))" @onclick="() => CancelAsync(job)">Cancel</button><button class="btn btn-sm btn-outline-primary" disabled="@(job.Status is not (EvaluationJobStatus.Failed or EvaluationJobStatus.Cancelled))" @onclick="() => RetryAsync(job)">Retry</button></div></td>
             </tr> }</tbody>
         </table></div>
     }
@@ -36,7 +37,10 @@
     private Guid userExternalId;
     private bool isBusy = true;
     private bool isError;
+    private bool showArchived;
     private string? message;
+    private int ArchivedCount => jobs.Count(job => job.IsArchived);
+    private IReadOnlyCollection<EvaluationJobDetails> VisibleJobs => (showArchived ? jobs : jobs.Where(job => !job.IsArchived)).ToArray();
 
     protected override async Task OnInitializedAsync()
     {

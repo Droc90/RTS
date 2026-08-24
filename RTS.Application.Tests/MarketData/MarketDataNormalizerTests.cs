@@ -43,6 +43,17 @@ public sealed class MarketDataNormalizerTests
         Assert.Throws<ArgumentException>(() => new MarketDataNormalizer().Normalize(Request(true), [Bar(Start)], "test", Start.AddHours(1)));
     }
 
+    [Fact]
+    public void Normalize_RejectsDataSetWhenSessionRulesRemoveEveryBar()
+    {
+        var bars = new[] { Bar(Start) with { IsExtendedHours = true } };
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            new MarketDataNormalizer().Normalize(Request(false), bars, "test", Start.AddHours(1)));
+
+        Assert.Contains("No usable market-data bars", exception.Message);
+    }
+
     private static MarketDataRequest Request(bool includeExtended) => new("ABC", Start, Start.AddHours(1), 1, BarIntervalUnit.Minutes, MarketSessionMode.RegularHoursOnly, includeExtended, includeExtended, includeExtended, false);
     private static PriceBar Bar(DateTime timestamp, bool extended = false) => new(timestamp, 10m, 12m, 9m, 11m, 1000m, extended, true);
 }

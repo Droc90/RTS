@@ -1,0 +1,90 @@
+@page "/candidates/{CandidateExternalId:guid}/evaluation"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.EvaluationJobs
+@using RTS.Web.Identity
+@inject IEvaluationJobService EvaluationJobService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Full Evaluation</PageTitle>
+
+<section class="py-4" aria-labelledby="evaluation-heading">
+    @if (isBusy)
+    {
+        <h1 id="evaluation-heading" class="h2">Checking evaluation history</h1>
+        <p class="text-body-secondary">Preparing the evaluation and financial charts…</p>
+    }
+    else if (existingJob is not null && error is null)
+    {
+        <h1 id="evaluation-heading" class="h2">An evaluation already exists</h1>
+        <p>A @existingJob.Status.ToString().ToLowerInvariant() evaluation for <strong>@existingJob.Symbol</strong> was started @existingJob.CreatedUtc.ToLocalTime().ToString("g").</p>
+        <p class="text-body-secondary">Would you like to view those results or run a new evaluation using current market data?</p>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-primary" href="@($"/evaluation-jobs/{existingJob.ExternalId}/charts")">View original results</a>
+            <button type="button" class="btn btn-outline-primary" disabled="@isStarting" @onclick="RerunAsync">@(isStarting ? "Starting…" : "Re-run evaluation")</button>
+            <a class="btn btn-outline-secondary" href="/candidates">Cancel</a>
+        </div>
+    }
+    else
+    {
+        <h1 id="evaluation-heading" class="h2">Unable to start evaluation</h1>
+        <div class="alert alert-danger" role="alert">@error</div>
+        <a class="btn btn-outline-primary" href="/candidates">Return to Candidate Inbox</a>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid CandidateExternalId { get; set; }
+    private Guid userExternalId;
+    private EvaluationJobDetails? existingJob;
+    private bool isBusy = true;
+    private bool isStarting;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        if (!principal.TryGetExternalUserId(out userExternalId))
+        {
+            error = "Your user identifier is unavailable.";
+            isBusy = false;
+            return;
+        }
+
+        try
+        {
+            existingJob = (await EvaluationJobService.GetJobsAsync(userExternalId))
+                .Where(job => job.CandidateExternalId == CandidateExternalId)
+                .OrderByDescending(job => job.CreatedUtc)
+                .FirstOrDefault();
+            if (existingJob is null) await StartAsync(forceNew: false);
+        }
+        catch (InvalidOperationException exception)
+        {
+            error = exception.Message;
+        }
+        isBusy = false;
+    }
+
+    private async Task RerunAsync()
+    {
+        isStarting = true;
+        await StartAsync(forceNew: true);
+        isStarting = false;
+    }
+
+    private async Task StartAsync(bool forceNew)
+    {
+        try
+        {
+            var jobExternalId = await EvaluationJobService.EnqueueSelectedCandidateAsync(userExternalId, CandidateExternalId, forceNew);
+            Navigation.NavigateTo($"/evaluation-jobs/{jobExternalId}/charts", replace: true);
+        }
+        catch (InvalidOperationException exception)
+        {
+            error = exception.Message;
+        }
+    }
+}

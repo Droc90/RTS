@@ -2,13 +2,13 @@
 
 ## Current status
 
-- Current branch: `feature/market-data-evaluation-jobs`
-- Current milestone: Market Data, Chart Automation, and Evaluation Jobs
+- Current branch: `feature/evaluation-worker-charts`
+- Current milestone: Chart Evaluation and Scoring
 - Application Foundation: 100% complete
 - Configurable Trading Model and Criteria Foundation: 100% complete
 - Candidate Discovery and Screening: 100% complete
-- Overall RTS checklist: 48% complete (49 of 103 items)
-- Cumulative active developer effort: 14–15 hours
+- Overall RTS checklist: 59% complete (63 of 106 items)
+- Cumulative active developer effort: 20–21 hours
 - Architecture: [RTS application architecture](architecture.md)
 - Product and AI design: [RTS product, AI, and adaptive-presentation design](product-ai-and-presentation.md)
 
@@ -62,8 +62,11 @@ Developer effort completed: approximately 4 active developer hours.
 - [x] Explain why candidates passed, warned, or failed
 - [x] Save discovery runs and criteria snapshots
 - [x] Export candidate lists
+- [x] Persist per-user candidate-identification settings
+- [x] Configure universe, liquidity, fundamental, catalyst, risk, portfolio, and ETF identification gates
+- [x] Snapshot candidate-identification settings into AI discovery runs
 
-## Market Data, Chart Automation, and Evaluation Jobs
+## Market Data, Chart Automation, and Evaluation Jobs — complete
 
 - [x] Define market-data coverage, freshness, and licensing requirements
 - [x] Create a provider-neutral market-price-data interface
@@ -76,21 +79,21 @@ Developer effort completed: approximately 4 active developer hours.
 - [x] Cache or persist normalized evaluation inputs
 - [x] Queue durable evaluation jobs for selected candidates
 - [x] Display evaluation-job progress, failures, cancellation, and retry
-- [ ] Render model-driven interactive financial charts
-- [ ] Reproduce the initial 5D, 1M, and 3M chart specification
+- [x] Render model-driven interactive financial charts
+- [x] Reproduce the initial 5D, 1M, and 3M chart specification
 
 ## Chart Evaluation and Scoring
 
-- [ ] Define technical and chart-evaluation criteria
-- [ ] Calculate Bollinger Bands, SMA, MACD, and RSI for the initial model
-- [ ] Produce separate findings and scores by timeframe
-- [ ] Apply configurable weights, thresholds, and mandatory rules
-- [ ] Produce category and overall scores
+- [x] Define technical and chart-evaluation criteria
+- [x] Calculate Bollinger Bands, SMA, MACD, and RSI for the initial model
+- [x] Produce separate findings and scores by timeframe
+- [x] Apply configurable weights, thresholds, and mandatory rules
+- [x] Produce category and overall scores
 - [ ] Identify bullish, bearish, and conflicting evidence
-- [ ] Explain every score contribution and deduction
+- [x] Explain every score contribution and deduction
 - [ ] Produce the canonical comprehensive evaluation
 - [ ] Preserve data, model, criteria, and calculation snapshots
-- [ ] Add calculation and evaluation regression tests
+- [x] Add calculation and evaluation regression tests
 
 ## Adaptive Evaluation Presentation
 
@@ -111,10 +114,10 @@ Developer effort completed: approximately 4 active developer hours.
 
 ## AI Enablement and Agentic Workflows
 
-- [ ] Create provider-neutral generative-AI application interfaces
-- [ ] Require structured outputs linked to evidence identifiers
+- [x] Create provider-neutral generative-AI application interfaces
+- [x] Require structured outputs linked to evidence identifiers
 - [ ] Add a natural-language strategy-drafting assistant
-- [ ] Add the catalyst-discovery agent
+- [x] Add the catalyst-discovery agent
 - [ ] Generate grounded evaluation narratives
 - [ ] Combine controlled chart images with calculated metrics when vision adds value
 - [ ] Expose narrowly defined, typed, and authorized agent tools
@@ -129,7 +132,7 @@ Developer effort completed: approximately 4 active developer hours.
 ## Workflow and Administration
 
 - [ ] Move candidates through discovery, review, evaluation, and decision stages
-- [ ] Add watchlists and exclusions
+- [x] Add watchlists and exclusions
 - [ ] Manage user presentation and trading preferences separately
 - [ ] Support strategy and trading-model sharing or copying
 - [ ] Add data-provider and AI-provider configuration
@@ -153,4 +156,5 @@ Developer effort completed: approximately 4 active developer hours.
 | Application Foundation | 3–4 hours | 3–4 hours |
 | Configurable Trading Model and Criteria Foundation | 4 hours | 7–8 hours |
 | Candidate Discovery and Screening | 4 hours | 11–12 hours |
-| Market Data, Chart Automation, and Evaluation Jobs (in progress) | 3 hours | 14–15 hours |
+| Market Data, Chart Automation, and Evaluation Jobs | 6 hours | 17–18 hours |
+| Chart Evaluation and Scoring (in progress) | 3 hours | 20–21 hours |
