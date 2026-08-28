@@ -1,0 +1,19 @@
+<div class="card h-100 rts-dashboard-card">
+    <div class="card-body d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-start gap-3 mb-3"><h2 class="h4 mb-0">@Title</h2><span class="rts-dashboard-count">@Count</span></div>
+        <div class="rts-dashboard-list flex-grow-1">
+            @if (Count == 0) { <p class="text-body-secondary">@EmptyText</p> }
+            else { @ChildContent }
+        </div>
+        <a class="mt-3 fw-semibold" href="@Link">@LinkText →</a>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public int Count { get; set; }
+    [Parameter, EditorRequired] public string EmptyText { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Link { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string LinkText { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

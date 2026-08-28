@@ -44,6 +44,7 @@ public sealed class DiscoveryCandidateConfiguration : IEntityTypeConfiguration<D
         builder.Property(candidate => candidate.EvidenceJson).HasColumnType("nvarchar(max)").IsRequired();
         builder.Property(candidate => candidate.CreatedUtc).HasPrecision(3).HasDefaultValueSql("SYSUTCDATETIME()");
         builder.Property(candidate => candidate.ModifiedUtc).HasPrecision(3);
+        builder.Property(candidate => candidate.IsWatchlisted).HasDefaultValue(false);
         builder.Property(candidate => candidate.RowVersion).IsRowVersion().IsConcurrencyToken();
         builder.HasIndex(candidate => candidate.ExternalId).IsUnique();
         builder.HasIndex(candidate => new { candidate.DiscoveryRunId, candidate.Symbol }).IsUnique();

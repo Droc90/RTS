@@ -8,8 +8,17 @@
 </a>
 
 <header class="rts-header">
-    <nav class="container rts-navigation"
+    <nav class="container-fluid rts-navigation"
          aria-label="Primary navigation">
+        <div class="rts-menu-slot">
+            <AuthorizeView>
+                <Authorized>
+                    <button type="button" class="rts-menu-toggle" title="Open or close navigation" aria-label="Open or close navigation" aria-expanded="@sidebarExpanded" @onclick="ToggleSidebar">
+                        <RadzenIcon Icon="menu" />
+                    </button>
+                </Authorized>
+            </AuthorizeView>
+        </div>
         <a href="/"
            class="rts-brand">
             <img src="images/BD2RTS.png"
@@ -31,11 +40,36 @@
     </nav>
 </header>
 
-<main id="main-content"
-      class="container rts-main-content"
-      tabindex="-1">
-    @Body
-</main>
+<div class="rts-app-shell">
+    <AuthorizeView>
+        <Authorized>
+            <aside class="rts-sidebar @(sidebarExpanded ? "is-expanded" : null)" aria-label="Application navigation">
+                <RadzenPanelMenu Multiple="true" class="rts-side-menu">
+                    <RadzenPanelMenuItem Text="Dashboard" Icon="dashboard" Path="/dashboard" />
+                    <RadzenPanelMenuItem Text="Candidates" Icon="fact_check">
+                        <RadzenPanelMenuItem Text="Candidate list" Icon="list" Path="/candidates" />
+                        <RadzenPanelMenuItem Text="Find candidates" Icon="search" Path="/candidate-discovery" />
+                        <RadzenPanelMenuItem Text="Evaluation history" Icon="history" Path="/evaluation-jobs" />
+                        <RadzenPanelMenuItem Text="Candidate settings" Icon="tune" Path="/candidate-settings" />
+                    </RadzenPanelMenuItem>
+                    <RadzenPanelMenuItem Text="Profile settings" Icon="manage_accounts" Path="/account/profile" />
+                    <AuthorizeView Policy="@RTS.Application.Authorization.ApplicationPolicyNames.RequireAdministrator">
+                        <Authorized Context="adminContext">
+                            <RadzenPanelMenuItem Text="Admin" Icon="admin_panel_settings">
+                                <RadzenPanelMenuItem Text="Admin dashboard" Icon="space_dashboard" Path="/admin" />
+                                <RadzenPanelMenuItem Text="User administration" Icon="group" Path="/admin/users" />
+                                <RadzenPanelMenuItem Text="Application errors" Icon="error_outline" Path="/admin/errors" />
+                                <RadzenPanelMenuItem Text="AI usage" Icon="data_usage" Path="/admin/ai-usage" />
+                            </RadzenPanelMenuItem>
+                        </Authorized>
+                    </AuthorizeView>
+                </RadzenPanelMenu>
+            </aside>
+        </Authorized>
+    </AuthorizeView>
+
+    <main id="main-content" class="container rts-main-content" tabindex="-1">@Body</main>
+</div>
 
 <div id="blazor-error-ui"
      role="alert"
@@ -56,3 +90,8 @@
 </div>
 
 <RadzenComponents @rendermode="InteractiveServer" />
+
+@code {
+    private bool sidebarExpanded = true;
+    private void ToggleSidebar() => sidebarExpanded = !sidebarExpanded;
+}

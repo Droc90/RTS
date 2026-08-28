@@ -32,7 +32,8 @@ public sealed record FinancialChartView(
     IReadOnlyCollection<FinancialChartPoint> Points,
     string ProviderKey,
     DateTime RetrievedUtc,
-    IReadOnlyCollection<DateTime> MissingBarsUtc);
+    IReadOnlyCollection<DateTime> MissingBarsUtc,
+    IReadOnlyCollection<FinancialChartPoint>? IndicatorSourcePoints = null);
 
 public static class InitialChartSpecification
 {

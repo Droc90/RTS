@@ -1,18 +1,32 @@
 namespace RTS.Application.Charting;
 
+public sealed record IndicatorCalculationSettings(
+    int SmaPeriod = 50,
+    int BollingerPeriod = 20,
+    decimal BollingerDeviations = 2m,
+    int MacdFastPeriod = 12,
+    int MacdSlowPeriod = 26,
+    int MacdSignalPeriod = 9,
+    int RsiPeriod = 14);
+
 public static class InitialIndicatorCalculator
 {
     public static IReadOnlyCollection<FinancialChartPoint> Calculate(IEnumerable<FinancialChartPoint> source)
+        => Calculate(source, new IndicatorCalculationSettings());
+
+    public static IReadOnlyCollection<FinancialChartPoint> Calculate(IEnumerable<FinancialChartPoint> source,
+        IndicatorCalculationSettings settings)
     {
+        Validate(settings);
         var points = source.OrderBy(point => point.TimestampUtc).ToArray();
         var closes = points.Select(point => point.Close).ToArray();
-        var sma50 = Sma(closes, 50);
-        var middle = Sma(closes, 20);
-        var (upper, lower) = Bollinger(closes, middle, 20, 2m);
-        var macd = Subtract(Ema(closes, 12), Ema(closes, 26));
-        var signal = Ema(macd, 9);
+        var sma50 = Sma(closes, settings.SmaPeriod);
+        var middle = Sma(closes, settings.BollingerPeriod);
+        var (upper, lower) = Bollinger(closes, middle, settings.BollingerPeriod, settings.BollingerDeviations);
+        var macd = Subtract(Ema(closes, settings.MacdFastPeriod), Ema(closes, settings.MacdSlowPeriod));
+        var signal = Ema(macd, settings.MacdSignalPeriod);
         var histogram = Subtract(macd, signal);
-        var rsi = Rsi(closes, 14);
+        var rsi = Rsi(closes, settings.RsiPeriod);
 
         return points.Select((point, index) => point with
         {
@@ -25,6 +39,17 @@ public static class InitialIndicatorCalculator
             MacdHistogram = histogram[index],
             Rsi = rsi[index]
         }).ToArray();
+    }
+
+    private static void Validate(IndicatorCalculationSettings settings)
+    {
+        if (settings.SmaPeriod is < 2 or > 250) throw new ArgumentOutOfRangeException(nameof(settings.SmaPeriod));
+        if (settings.BollingerPeriod is < 2 or > 250) throw new ArgumentOutOfRangeException(nameof(settings.BollingerPeriod));
+        if (settings.BollingerDeviations is < 0.5m or > 5m) throw new ArgumentOutOfRangeException(nameof(settings.BollingerDeviations));
+        if (settings.MacdFastPeriod is < 2 or > 100 || settings.MacdSlowPeriod is < 3 or > 250 ||
+            settings.MacdFastPeriod >= settings.MacdSlowPeriod) throw new ArgumentException("MACD requires a fast period shorter than the slow period.");
+        if (settings.MacdSignalPeriod is < 2 or > 100) throw new ArgumentOutOfRangeException(nameof(settings.MacdSignalPeriod));
+        if (settings.RsiPeriod is < 2 or > 100) throw new ArgumentOutOfRangeException(nameof(settings.RsiPeriod));
     }
 
     private static decimal?[] Sma(decimal[] values, int period)

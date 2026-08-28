@@ -4,6 +4,7 @@ using RTS.Application.CandidateDiscovery;
 using RTS.Domain.CandidateDiscovery;
 using RTS.Domain.ScreeningStrategies;
 using RTS.Infrastructure.Persistence;
+using RTS.Infrastructure.AiUsage;
 
 namespace RTS.Infrastructure.CandidateDiscovery;
 
@@ -72,6 +73,26 @@ public sealed class CandidateDiscoveryWorkflowService(
             ExcludedSymbols = request.ExcludedSymbols.Concat(historicalExclusions).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
         };
         var report = await educationalProvider.DiscoverAsync(request, cancellationToken);
+        if (report.Provenance?.Usage is { } usage)
+        {
+            dbContext.AiUsageRecords.Add(new AiUsageRecord
+            {
+                OwnerUserId = ownerId,
+                OperationExternalId = report.DiscoveryRunExternalId,
+                OperationType = "CandidateDiscovery",
+                Provider = report.Provenance.Provider,
+                Model = report.Provenance.Model,
+                PromptVersion = report.Provenance.PromptVersion,
+                SchemaVersion = report.Provenance.SchemaVersion,
+                InputTokens = usage.InputTokens,
+                CachedInputTokens = usage.CachedInputTokens,
+                OutputTokens = usage.OutputTokens,
+                ReasoningOutputTokens = usage.ReasoningOutputTokens,
+                TotalTokens = usage.TotalTokens,
+                WebSearchCalls = usage.WebSearchCalls,
+                RecordedUtc = DateTime.UtcNow
+            });
+        }
         var strategy = await GetManualStrategyAsync(cancellationToken);
         var version = strategy.Versions.Single(item => item.Status == ScreeningStrategyVersionStatus.Published);
         var candidates = report.Candidates.Select(candidate => new CandidateScreeningResult(
@@ -87,8 +108,13 @@ public sealed class CandidateDiscoveryWorkflowService(
                 new("Key risks", "AI.KeyRisks", ScreeningOutcome.Warning, candidate.KeyRisks, 0),
                 new("What evaluation will inspect", "AI.EducationalContext", ScreeningOutcome.Passed, candidate.EducationalContext, 0)
             }, candidate.Evidence)).ToArray();
+        var criteriaSnapshot = JsonSerializer.Serialize(new
+        {
+            Request = request,
+            AiProvenance = report.Provenance
+        });
         var run = new DiscoveryRunResult(report.DiscoveryRunExternalId, version.ExternalId, version.VersionNumber,
-            "ai-educational-discovery", report.GeneratedUtc, DateTime.UtcNow, JsonSerializer.Serialize(request), candidates);
+            "ai-educational-discovery", report.GeneratedUtc, DateTime.UtcNow, criteriaSnapshot, candidates);
         await inboxService.SaveRunAsync(userExternalId, run, cancellationToken);
         return report;
     }

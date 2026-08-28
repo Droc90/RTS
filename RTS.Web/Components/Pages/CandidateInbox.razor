@@ -5,10 +5,12 @@
 @using RTS.Application.CandidateDiscovery
 @using RTS.Domain.CandidateDiscovery
 @using RTS.Application.EvaluationJobs
+@using RTS.Application.MarketData
 @using RTS.Web.Identity
 @using System.Text.Json
 @inject ICandidateInboxService InboxService
 @inject IEvaluationJobService EvaluationJobService
+@inject IMarketDataService MarketDataService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject DialogService DialogService
 
@@ -18,7 +20,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
         <div>
             <h1 id="candidate-inbox-heading" class="h2 mb-1">Candidate Inbox</h1>
-            <p class="text-body-secondary mb-0">Here is how the current candidates rank for further RTS review.</p>
+            <p class="text-body-secondary mb-0">Candidates awaiting a full-evaluation decision and securities on your watchlist.</p>
         </div>
         <button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@isBusy">Refresh</button>
         <a class="btn btn-outline-primary" href="/evaluation-jobs">Evaluation history</a>
@@ -34,22 +36,31 @@
     {
         <p aria-live="polite">Loading candidates…</p>
     }
-    else if (items.Count == 0)
+    else if (!VisibleItems.Any())
     {
-        <div class="card"><div class="card-body"><h2 class="h5">No candidates yet</h2><p class="mb-0 text-body-secondary">Run discovery or add a manual candidate to populate this inbox.</p></div></div>
+        <div class="card"><div class="card-body"><h2 class="h5">Nothing needs attention</h2><p class="mb-0 text-body-secondary">Run discovery, add a ticker, or add securities to your watchlist.</p></div></div>
     }
     else
     {
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <caption class="visually-hidden">Discovered trading candidates</caption>
-                <thead><tr><th>Rank</th><th>Symbol</th><th>Review?</th><th>Why</th><th><span class="visually-hidden">Details</span></th><th><span class="visually-hidden">Evaluation</span></th><th><span class="visually-hidden">More actions</span></th></tr></thead>
+                <thead><tr><th>Rank</th><th>Symbol</th><th>Price</th><th>Today</th><th>Review?</th><th>Why</th><th><span class="visually-hidden">Details</span></th><th><span class="visually-hidden">Evaluation</span></th><th><span class="visually-hidden">More actions</span></th></tr></thead>
                 <tbody>
-                @foreach (var item in items)
+                @{ string? currentSection = null; }
+                @foreach (var item in VisibleItems)
                 {
+                    var section = IsOnWatchlist(item) ? "Watchlist" : "Candidates awaiting evaluation";
+                    if (section != currentSection)
+                    {
+                        currentSection = section;
+                        <tr class="table-group-divider"><th colspan="9" class="bg-body-tertiary">@section</th></tr>
+                    }
                     <tr>
                         <td class="text-center">@item.Rank</td>
                         <th scope="row">@item.Symbol</th>
+                        <td>@(quotes.TryGetValue(item.Symbol, out var quote) ? quote.Last.ToString("C2") : "—")</td>
+                        <td>@if (quote?.ChangePercent is { } change) { <span class="@(change >= 0 ? "text-success" : "text-danger")">@FormatChange(change)</span> } else { <span>—</span> }</td>
                         <td><span class="badge rounded-pill @ReviewClass(item) candidate-review-chip" title="@ReviewMeaning(item)" aria-label="@($"{ReviewMessage(item)}: {ReviewMeaning(item)}")">@ReviewMessage(item)</span></td>
                         <td class="candidate-why">@CandidateReason(item)</td>
                         <td><button type="button" class="candidate-icon-action candidate-disclosure" title="@(expanded.Contains(item.ExternalId) ? "Hide details" : "Show details")" aria-label="@(expanded.Contains(item.ExternalId) ? $"Hide details for {item.Symbol}" : $"Show details for {item.Symbol}")" aria-expanded="@expanded.Contains(item.ExternalId)" @onclick="() => ToggleDetails(item.ExternalId)"><RadzenIcon Icon="@(expanded.Contains(item.ExternalId) ? "keyboard_arrow_up" : "keyboard_arrow_down")" /></button></td>
@@ -73,7 +84,7 @@
                         var factors = ReadFactors(item);
                         var evidence = ReadEvidence(item);
                         <tr class="candidate-details">
-                            <td colspan="7">
+                            <td colspan="9">
                                 <div class="p-3">
                                     <h2 class="h5">@item.Symbol screening details</h2>
                                     <p class="small text-body-secondary">Observed @item.DataTimestampUtc.ToLocalTime().ToString("g"). These are discovery-screen results; full technical evaluation is created only after selection and queued processing.</p>
@@ -124,6 +135,13 @@
     private Guid? actionsFor;
     private Guid? evaluationOpening;
     private IReadOnlyDictionary<Guid, EvaluationJobDetails> latestEvaluations = new Dictionary<Guid, EvaluationJobDetails>();
+    private IReadOnlyDictionary<string, MarketQuote> quotes = new Dictionary<string, MarketQuote>(StringComparer.OrdinalIgnoreCase);
+    private IEnumerable<CandidateInboxItem> VisibleItems => items
+        .Where(item => IsOnWatchlist(item)
+            ? item.Status is not (CandidateWorkflowStatus.Rejected or CandidateWorkflowStatus.Excluded)
+            : !item.HasEvaluationJob && item.Status is CandidateWorkflowStatus.Proposed or CandidateWorkflowStatus.Deferred or CandidateWorkflowStatus.Selected)
+        .OrderBy(item => IsOnWatchlist(item) ? 1 : 0)
+        .ThenBy(item => item.Rank).ThenBy(item => item.Symbol);
 
     protected override async Task OnInitializedAsync()
     {
@@ -146,8 +164,19 @@
         latestEvaluations = (await EvaluationJobService.GetJobsAsync(userExternalId))
             .GroupBy(job => job.CandidateExternalId)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(job => job.CreatedUtc).First());
+        var quoteResults = await Task.WhenAll(VisibleItems.Select(LoadQuoteAsync));
+        quotes = quoteResults.Where(item => item is not null).Cast<MarketQuote>()
+            .ToDictionary(item => item.Symbol, StringComparer.OrdinalIgnoreCase);
         isBusy = false;
     }
+
+    private async Task<MarketQuote?> LoadQuoteAsync(CandidateInboxItem item)
+    {
+        try { return await MarketDataService.GetQuoteAsync(item.Symbol); }
+        catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException or TaskCanceledException) { return null; }
+    }
+
+    private static string FormatChange(decimal value) => $"{(value >= 0 ? "+" : null)}{value:0.00}%";
 
     private async Task OpenEvaluationAsync(CandidateInboxItem item)
     {
@@ -183,6 +212,8 @@
         items = await InboxService.GetInboxAsync(userExternalId);
         isBusy = false;
     }
+
+    private static bool IsOnWatchlist(CandidateInboxItem item) => item.IsWatchlisted || item.Source == CandidateSourceType.Watchlist;
 
     private static bool CanEvaluate(CandidateInboxItem item) => item.HasEvaluationJob || item.Status is CandidateWorkflowStatus.Proposed or CandidateWorkflowStatus.Deferred or CandidateWorkflowStatus.Selected;
     private static bool CanDisposition(CandidateInboxItem item) => item.Status is not (CandidateWorkflowStatus.Rejected or CandidateWorkflowStatus.Excluded or CandidateWorkflowStatus.PreviouslyEvaluated);

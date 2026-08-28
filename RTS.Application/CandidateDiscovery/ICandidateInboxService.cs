@@ -16,7 +16,8 @@ public sealed record CandidateInboxItem(
     bool HasEvaluationJob,
     string FactorsJson,
     string EvidenceJson,
-    byte[] RowVersion);
+    byte[] RowVersion,
+    bool IsWatchlisted = false);
 
 public interface ICandidateInboxService
 {
@@ -33,6 +34,13 @@ public interface ICandidateInboxService
         Guid userExternalId,
         Guid candidateExternalId,
         CandidateWorkflowStatus status,
+        byte[] rowVersion,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> SetWatchlistAsync(
+        Guid userExternalId,
+        Guid candidateExternalId,
+        bool isWatchlisted,
         byte[] rowVersion,
         CancellationToken cancellationToken = default);
 }

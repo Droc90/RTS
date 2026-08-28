@@ -54,7 +54,9 @@ public sealed record MarketQuote(
     decimal Bid,
     decimal Ask,
     decimal Last,
-    DateTime TimestampUtc);
+    DateTime TimestampUtc,
+    decimal? PreviousClose = null,
+    decimal? ChangePercent = null);
 
 public enum CorporateActionType
 {

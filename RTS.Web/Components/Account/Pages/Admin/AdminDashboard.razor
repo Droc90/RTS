@@ -1,0 +1,16 @@
+@page "/admin"
+@using Microsoft.AspNetCore.Authorization
+@using RTS.Application.Authorization
+@attribute [Authorize(Policy = ApplicationPolicyNames.RequireAdministrator)]
+
+<PageTitle>Administration</PageTitle>
+
+<section class="py-4" aria-labelledby="admin-heading">
+    <h1 id="admin-heading">Administration</h1>
+    <p class="lead text-body-secondary">Manage users and monitor application operations.</p>
+    <div class="row g-4 mt-1">
+        <div class="col-12 col-md-6 col-xl-4"><a class="card h-100 text-decoration-none" href="/admin/users"><div class="card-body p-4"><RadzenIcon Icon="group" class="fs-2 text-primary" /><h2 class="h4 mt-3">User administration</h2><p class="text-body-secondary mb-0">Search users and manage account access and administrator roles.</p></div></a></div>
+        <div class="col-12 col-md-6 col-xl-4"><a class="card h-100 text-decoration-none" href="/admin/errors"><div class="card-body p-4"><RadzenIcon Icon="error_outline" class="fs-2 text-danger" /><h2 class="h4 mt-3">Application errors</h2><p class="text-body-secondary mb-0">Review failures, diagnostics, and resolution status.</p></div></a></div>
+        <div class="col-12 col-md-6 col-xl-4"><a class="card h-100 text-decoration-none" href="/admin/ai-usage"><div class="card-body p-4"><RadzenIcon Icon="data_usage" class="fs-2 text-success" /><h2 class="h4 mt-3">AI usage</h2><p class="text-body-secondary mb-0">Monitor token and web-search usage by operation and user.</p></div></a></div>
+    </div>
+</section>

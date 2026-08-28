@@ -45,7 +45,14 @@ public sealed class AlpacaMarketDataProvider(IOptions<AlpacaMarketDataOptions> c
         using var document = await GetJsonAsync($"/v2/stocks/{Uri.EscapeDataString(symbol)}/snapshot?feed={Encode(options.Feed)}", cancellationToken);
         var quote = document.RootElement.GetProperty("latestQuote");
         var trade = document.RootElement.GetProperty("latestTrade");
-        return new MarketQuote(symbol, quote.GetProperty("bp").GetDecimal(), quote.GetProperty("ap").GetDecimal(), trade.GetProperty("p").GetDecimal(), quote.GetProperty("t").GetDateTime().ToUniversalTime());
+        var last = trade.GetProperty("p").GetDecimal();
+        decimal? previousClose = document.RootElement.TryGetProperty("prevDailyBar", out var previousBar) &&
+            previousBar.ValueKind == JsonValueKind.Object && previousBar.TryGetProperty("c", out var close)
+                ? close.GetDecimal()
+                : null;
+        decimal? changePercent = previousClose is > 0 ? (last - previousClose.Value) / previousClose.Value * 100m : null;
+        return new MarketQuote(symbol, quote.GetProperty("bp").GetDecimal(), quote.GetProperty("ap").GetDecimal(),
+            last, quote.GetProperty("t").GetDateTime().ToUniversalTime(), previousClose, changePercent);
     }
 
     public async Task<IReadOnlyCollection<CorporateAction>> GetCorporateActionsAsync(string symbol, DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken = default)

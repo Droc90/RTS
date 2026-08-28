@@ -89,7 +89,7 @@ public sealed class EvaluationJobWorker(
             await dbContext.Entry(job).ReloadAsync(cancellationToken);
             if (job.Status == EvaluationJobStatus.Cancelled) return true;
             job.Status = EvaluationJobStatus.Failed;
-            job.ProgressMessage = "Market-data preparation failed.";
+            job.ProgressMessage = "Evaluation processing failed.";
             job.ErrorMessage = exception.Message.Length <= 4000 ? exception.Message : exception.Message[..4000];
             job.CompletedUtc = DateTime.UtcNow;
         }

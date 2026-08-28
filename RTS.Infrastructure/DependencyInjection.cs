@@ -78,6 +78,8 @@ public static class DependencyInjection
             IUserAdministrationService,
             UserAdministrationService>();
 
+        services.AddScoped<IAiUsageAdministrationService, AiUsageAdministrationService>();
+
         services.AddScoped<
             ILoginHistoryService,
             LoginHistoryService>();
@@ -114,6 +116,8 @@ public static class DependencyInjection
         services.AddScoped<IEvaluationJobProcessor, MarketDataEvaluationJobProcessor>();
         services.AddScoped<IFinancialChartService, FinancialChartService>();
         services.AddScoped<IChartEvaluationConfigurationProvider, ChartEvaluationConfigurationProvider>();
+        services.AddScoped<ICanonicalEvaluationService, CanonicalEvaluationService>();
+        services.AddScoped<IEvaluationResearchProvider, OpenAiEvaluationResearchProvider>();
         services.AddHostedService<EvaluationJobWorker>();
 
         return services;

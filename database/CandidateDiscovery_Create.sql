@@ -38,6 +38,7 @@ BEGIN
         [Rank] int NOT NULL,
         [DataTimestampUtc] datetime2(3) NOT NULL,
         [Status] int NOT NULL,
+        [IsWatchlisted] bit NOT NULL CONSTRAINT [DF_DiscoveryCandidates_IsWatchlisted] DEFAULT 0,
         [FactorsJson] nvarchar(max) NOT NULL,
         [EvidenceJson] nvarchar(max) NOT NULL,
         [CreatedUtc] datetime2(3) NOT NULL CONSTRAINT [DF_DiscoveryCandidates_CreatedUtc] DEFAULT SYSUTCDATETIME(),

@@ -29,7 +29,23 @@ public sealed record EducationalDiscoveryReport(
     DateTime GeneratedUtc,
     string Summary,
     IReadOnlyCollection<string> RecommendedEvaluationOrder,
-    IReadOnlyCollection<EducationalCandidate> Candidates);
+    IReadOnlyCollection<EducationalCandidate> Candidates,
+    AiDiscoveryProvenance? Provenance = null);
+
+public sealed record AiDiscoveryProvenance(
+    string Provider,
+    string Model,
+    string PromptVersion,
+    string SchemaVersion,
+    AiUsageMetrics? Usage = null);
+
+public sealed record AiUsageMetrics(
+    int InputTokens,
+    int CachedInputTokens,
+    int OutputTokens,
+    int ReasoningOutputTokens,
+    int TotalTokens,
+    int WebSearchCalls);
 
 public interface IEducationalCandidateDiscoveryProvider
 {

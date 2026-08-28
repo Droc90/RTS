@@ -41,7 +41,7 @@ public sealed class FinancialChartService(RtsDbContext dbContext) : IFinancialCh
             var visibleFromUtc = match.Request.ToUtc - definition.Lookback;
             results.Add(new FinancialChartView(definition,
                 calculated.Where(point => point.TimestampUtc >= visibleFromUtc).ToArray(),
-                match.Snapshot.ProviderKey, match.Snapshot.RetrievedUtc, missing));
+                match.Snapshot.ProviderKey, match.Snapshot.RetrievedUtc, missing, calculated));
         }
         return results;
     }

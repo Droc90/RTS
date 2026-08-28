@@ -4,28 +4,6 @@
 <AuthorizeView>
     <Authorized Context="authContext">
         <div class="account-navigation">
-            <div class="account-links">
-                <a href="/account/profile">
-                    My Profile
-                </a>
-
-                <a href="/candidate-settings">
-                    Candidate Settings
-                </a>
-
-                <AuthorizeView Policy="@ApplicationPolicyNames.RequireAdministrator">
-                    <Authorized>
-                        <a href="/admin/users">
-                            User Administration
-                        </a>
-
-                        <a href="/admin/errors">
-                            Application Errors
-                        </a>
-                    </Authorized>
-                </AuthorizeView>
-            </div>
-
             <div class="account-session">
                 <span class="account-name"
                       title="@authContext.User.Identity?.Name">

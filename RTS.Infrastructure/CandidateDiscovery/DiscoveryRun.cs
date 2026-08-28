@@ -28,6 +28,7 @@ public sealed class DiscoveryCandidate
     public int Rank { get; set; }
     public DateTime DataTimestampUtc { get; set; }
     public CandidateWorkflowStatus Status { get; set; }
+    public bool IsWatchlisted { get; set; }
     public string FactorsJson { get; set; } = "[]";
     public string EvidenceJson { get; set; } = "[]";
     public DateTime CreatedUtc { get; set; }

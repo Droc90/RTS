@@ -10,6 +10,8 @@ namespace RTS.Infrastructure.CandidateDiscovery;
 
 public sealed class OpenAiEducationalCandidateDiscoveryProvider(IOptions<OpenAiCandidateDiscoveryOptions> options) : IEducationalCandidateDiscoveryProvider
 {
+    public const string PromptVersion = "1.1";
+    public const string SchemaVersion = "1.0";
     private static readonly HttpClient Client = new();
     private readonly OpenAiCandidateDiscoveryOptions options = options.Value;
 
@@ -43,9 +45,10 @@ public sealed class OpenAiEducationalCandidateDiscoveryProvider(IOptions<OpenAiC
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"OpenAI candidate discovery failed ({(int)response.StatusCode}): {ReadError(responseText)}");
         var json = ExtractOutputText(responseText);
+        var usage = OpenAiUsageReader.Read(responseText);
         var payload = JsonSerializer.Deserialize<ProviderReport>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
             ?? throw new InvalidOperationException("OpenAI returned an empty candidate-discovery report.");
-        return ToReport(payload, generatedUtc, request);
+        return ToReport(payload, generatedUtc, request, usage);
     }
 
     private void ValidateConfiguration()
@@ -64,7 +67,7 @@ public sealed class OpenAiEducationalCandidateDiscoveryProvider(IOptions<OpenAiC
         "Candidate quality must be expressed on a 0-100 scale (for example, 85 rather than 0.85). " +
         "The primary_thesis is the short RTS modifier/reason: state the timely catalyst, fundamental signal, portfolio reason, or setup modifier and then what confirmation is still needed. " +
         "Do not use primary_thesis merely to describe the company's business. Keep it to one concise sentence, such as 'Post-earnings cooling and data-center demand; needs charts.' " +
-        "Explain portfolio fit, risks, and what a later technical evaluation would inspect. " +
+        "Write for a beginning investor: explain why each point matters to the investment, avoid industry jargon and product lists, and keep primary thesis, portfolio fit, risks, and later evaluation focus to one short sentence each. " +
         $"Current UTC: {now:O}. User context JSON: {JsonSerializer.Serialize(request)}";
 
     private static object CreateSchema() => new
@@ -113,7 +116,7 @@ public sealed class OpenAiEducationalCandidateDiscoveryProvider(IOptions<OpenAiC
         catch (JsonException) { return "The provider returned an unreadable error."; }
     }
 
-    private static EducationalDiscoveryReport ToReport(ProviderReport payload, DateTime generatedUtc, EducationalDiscoveryRequest request)
+    private EducationalDiscoveryReport ToReport(ProviderReport payload, DateTime generatedUtc, EducationalDiscoveryRequest request, AiUsageMetrics usage)
     {
         var excluded = request.ExcludedSymbols.ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (payload.Candidates.Length > request.MaximumCandidates)
@@ -137,7 +140,9 @@ public sealed class OpenAiEducationalCandidateDiscoveryProvider(IOptions<OpenAiC
             return new EducationalCandidate(item.Rank, symbol, Enum.Parse<AssetType>(item.AssetType), item.TypeDescription,
                 candidateQuality, item.InitialStatus, item.PrimaryThesis, item.PortfolioFit, item.KeyRisks, item.EducationalContext, evidence);
         }).OrderBy(item => item.Rank).ToArray();
-        return new EducationalDiscoveryReport(Guid.NewGuid(), generatedUtc, payload.Summary, payload.RecommendedEvaluationOrder, candidates);
+        return new EducationalDiscoveryReport(Guid.NewGuid(), generatedUtc, payload.Summary,
+            payload.RecommendedEvaluationOrder, candidates,
+            new AiDiscoveryProvenance("OpenAI", options.Model, PromptVersion, SchemaVersion, usage));
     }
 
     private sealed record ProviderReport(

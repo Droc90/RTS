@@ -6,7 +6,8 @@ using RTS.Infrastructure.Persistence;
 
 namespace RTS.Infrastructure.EvaluationJobs;
 
-public sealed class MarketDataEvaluationJobProcessor(IMarketDataService marketDataService, IMarketDataSnapshotStore snapshotStore, RtsDbContext dbContext) : IEvaluationJobProcessor
+public sealed class MarketDataEvaluationJobProcessor(IMarketDataService marketDataService, IMarketDataSnapshotStore snapshotStore,
+    ICanonicalEvaluationService canonicalEvaluationService, RtsDbContext dbContext) : IEvaluationJobProcessor
 {
     public async Task ProcessAsync(Guid jobExternalId, string symbol, CancellationToken cancellationToken = default)
     {
@@ -21,7 +22,10 @@ public sealed class MarketDataEvaluationJobProcessor(IMarketDataService marketDa
             var data = await marketDataService.GetNormalizedBarsAsync(request, cancellationToken);
             await snapshotStore.SaveAsync(jobExternalId, data, cancellationToken);
         }
-        await UpdateProgressAsync(jobExternalId, 95, "Market data normalized and chart views prepared.", cancellationToken);
+        await UpdateProgressAsync(jobExternalId, 90, "Market data normalized and chart views prepared.", cancellationToken);
+        await UpdateProgressAsync(jobExternalId, 92, "Researching current fundamentals, catalysts, and risks.", cancellationToken);
+        await canonicalEvaluationService.GenerateAsync(jobExternalId, cancellationToken);
+        await UpdateProgressAsync(jobExternalId, 97, "Canonical comprehensive evaluation saved.", cancellationToken);
     }
 
     private static MarketDataRequest ExpandForIndicatorWarmup(MarketDataRequest request) =>

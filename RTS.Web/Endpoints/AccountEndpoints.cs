@@ -226,7 +226,7 @@ public static class AccountEndpoints
                 returnUrl,
                 UriKind.Relative))
         {
-            return "/";
+            return "/dashboard";
         }
 
         return returnUrl;

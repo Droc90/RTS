@@ -41,6 +41,7 @@ public sealed class CandidateInboxService(RtsDbContext dbContext) : ICandidateIn
                 Rank = candidate.Rank,
                 DataTimestampUtc = candidate.DataTimestampUtc,
                 Status = candidate.Status,
+                IsWatchlisted = candidate.Source == CandidateSourceType.Watchlist,
                 FactorsJson = JsonSerializer.Serialize(candidate.Factors),
                 EvidenceJson = JsonSerializer.Serialize(candidate.Evidence),
                 CreatedUtc = DateTime.UtcNow
@@ -69,7 +70,7 @@ public sealed class CandidateInboxService(RtsDbContext dbContext) : ICandidateIn
                 item.Candidate.Status,
                 dbContext.EvaluationJobs.Any(job => job.DiscoveryCandidateId == item.Candidate.Id),
                 item.Candidate.FactorsJson, item.Candidate.EvidenceJson,
-                item.Candidate.RowVersion))
+                item.Candidate.RowVersion, item.Candidate.IsWatchlisted))
             .ToArrayAsync(cancellationToken);
     }
 
@@ -94,6 +95,22 @@ public sealed class CandidateInboxService(RtsDbContext dbContext) : ICandidateIn
         {
             return false;
         }
+    }
+
+    public async Task<bool> SetWatchlistAsync(Guid userExternalId, Guid candidateExternalId, bool isWatchlisted,
+        byte[] rowVersion, CancellationToken cancellationToken = default)
+    {
+        if (rowVersion.Length == 0) return false;
+        var ownerId = await GetActiveUserIdAsync(userExternalId, cancellationToken);
+        var candidate = await dbContext.DiscoveryCandidates.SingleOrDefaultAsync(item =>
+            item.ExternalId == candidateExternalId &&
+            dbContext.DiscoveryRuns.Any(run => run.Id == item.DiscoveryRunId && run.OwnerUserId == ownerId), cancellationToken);
+        if (candidate is null || !candidate.RowVersion.SequenceEqual(rowVersion)) return false;
+        candidate.IsWatchlisted = isWatchlisted;
+        candidate.ModifiedUtc = DateTime.UtcNow;
+        dbContext.Entry(candidate).Property(item => item.RowVersion).OriginalValue = rowVersion;
+        try { await dbContext.SaveChangesAsync(cancellationToken); return true; }
+        catch (DbUpdateConcurrencyException) { return false; }
     }
 
     private async Task<long> GetActiveUserIdAsync(Guid externalId, CancellationToken cancellationToken) =>

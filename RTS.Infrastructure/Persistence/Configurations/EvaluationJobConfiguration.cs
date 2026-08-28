@@ -50,3 +50,27 @@ public sealed class MarketDataSnapshotConfiguration : IEntityTypeConfiguration<M
         builder.HasIndex(snapshot => new { snapshot.EvaluationJobId, snapshot.RetrievedUtc });
     }
 }
+
+public sealed class EvaluationResultConfiguration : IEntityTypeConfiguration<EvaluationResult>
+{
+    public void Configure(EntityTypeBuilder<EvaluationResult> builder)
+    {
+        builder.ToTable("EvaluationResults", "Trading", table =>
+        {
+            table.HasCheckConstraint("CK_EvaluationResults_ConfigurationJson", "ISJSON([ConfigurationJson]) = 1");
+            table.HasCheckConstraint("CK_EvaluationResults_ResultJson", "ISJSON([ResultJson]) = 1");
+            table.HasCheckConstraint("CK_EvaluationResults_MarketDataSnapshotExternalIdsJson", "ISJSON([MarketDataSnapshotExternalIdsJson]) = 1");
+        });
+        builder.HasKey(result => result.Id);
+        builder.Property(result => result.ExternalId).ValueGeneratedNever();
+        builder.Property(result => result.CreatedUtc).HasPrecision(3);
+        builder.Property(result => result.CalculationVersion).HasMaxLength(50).IsRequired();
+        builder.Property(result => result.ConfigurationJson).HasColumnType("nvarchar(max)").IsRequired();
+        builder.Property(result => result.ResultJson).HasColumnType("nvarchar(max)").IsRequired();
+        builder.Property(result => result.MarketDataSnapshotExternalIdsJson).HasColumnType("nvarchar(max)").IsRequired();
+        builder.Property(result => result.RowVersion).IsRowVersion().IsConcurrencyToken();
+        builder.HasOne<EvaluationJob>().WithOne().HasForeignKey<EvaluationResult>(result => result.EvaluationJobId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(result => result.ExternalId).IsUnique();
+        builder.HasIndex(result => result.EvaluationJobId).IsUnique();
+    }
+}

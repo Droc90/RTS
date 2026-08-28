@@ -1,0 +1,117 @@
+@page "/dashboard"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.CandidateDiscovery
+@using RTS.Application.EvaluationJobs
+@using RTS.Application.Profiles
+@using RTS.Application.MarketData
+@using RTS.Contracts.Profiles
+@using RTS.Domain.CandidateDiscovery
+@using RTS.Web.Identity
+@inject ICandidateInboxService InboxService
+@inject IEvaluationJobService EvaluationJobService
+@inject IUserProfileService ProfileService
+@inject IMarketDataService MarketDataService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject DialogService DialogService
+
+<PageTitle>My dashboard</PageTitle>
+
+<section class="py-4" aria-labelledby="dashboard-heading">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div><p class="text-primary fw-semibold mb-1">Ranked Trading System</p><h1 id="dashboard-heading" class="mb-1">@Greeting</h1><p class="text-body-secondary mb-0">Your candidates and evaluations that need attention.</p></div>
+        <a class="btn btn-primary" href="/candidate-discovery">Find candidates</a>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert alert-danger">@error</div> }
+    else if (isLoading) { <p>Loading your dashboard…</p> }
+    else
+    {
+        <div class="row g-4 rts-dashboard-grid">
+            <div class="col-12 col-xl-4"><DashboardCard Title="Needs evaluation" Count="@needsEvaluation.Count" EmptyText="No candidates are waiting for an evaluation." Link="/candidates" LinkText="View candidates">
+                @foreach (var item in needsEvaluation.Take(5)) { <div class="rts-dashboard-list-item"><div><strong>@item.Symbol</strong><div class="small text-body-secondary">@CandidateReason(item)</div></div><span class="badge rounded-pill text-bg-warning">@item.Score.ToString("0.#")</span></div> }
+            </DashboardCard></div>
+            <div class="col-12 col-xl-4"><DashboardCard Title="Evaluated, no decision" Count="@awaitingDecision.Count" EmptyText="No completed evaluations are waiting for a decision." Link="/evaluation-jobs" LinkText="View evaluations">
+                @foreach (var item in awaitingDecision.Take(5)) { <button type="button" class="rts-dashboard-list-item rts-dashboard-list-action" title="Open @item.Candidate.Symbol evaluation" @onclick="() => OpenEvaluationAsync(item)"><span><strong>@item.Candidate.Symbol</strong><span class="small text-body-secondary d-block">Evaluation available</span></span><RadzenIcon Icon="chevron_right" /></button> }
+            </DashboardCard></div>
+            <div class="col-12 col-xl-4"><DashboardCard Title="Watchlist" Count="@watchlist.Count" EmptyText="Your watchlist is empty." Link="/candidates" LinkText="View watchlist">
+                @foreach (var item in watchlist.Take(5)) { <div class="rts-dashboard-list-item"><div><strong>@item.Symbol</strong><div class="small text-body-secondary">@QuoteText(item.Symbol)</div></div><RadzenIcon Icon="visibility" /></div> }
+            </DashboardCard></div>
+        </div>
+    }
+</section>
+
+@code {
+    private bool isLoading = true;
+    private string? error;
+    private UserProfileDetails? profile;
+    private IReadOnlyCollection<CandidateInboxItem> needsEvaluation = [];
+    private IReadOnlyCollection<DashboardEvaluation> awaitingDecision = [];
+    private IReadOnlyCollection<CandidateInboxItem> watchlist = [];
+    private IReadOnlyDictionary<string, MarketQuote> watchlistQuotes = new Dictionary<string, MarketQuote>(StringComparer.OrdinalIgnoreCase);
+    private string Greeting => string.IsNullOrWhiteSpace(profile?.DisplayName) ? "My dashboard" : $"Welcome, {profile.DisplayName}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            if (!principal.TryGetExternalUserId(out var userExternalId)) throw new InvalidOperationException("Your user identifier is unavailable.");
+            profile = await ProfileService.GetOrCreateAsync(userExternalId);
+            var items = await InboxService.GetInboxAsync(userExternalId);
+            var jobs = await EvaluationJobService.GetJobsAsync(userExternalId);
+            var completedJobs = jobs.Where(job => job.Status == EvaluationJobStatus.Succeeded)
+                .GroupBy(job => job.CandidateExternalId)
+                .ToDictionary(group => group.Key, group => group.OrderByDescending(job => job.CreatedUtc).First());
+            needsEvaluation = items.Where(item => !IsOnWatchlist(item) && !item.HasEvaluationJob &&
+                    item.Status is CandidateWorkflowStatus.Proposed or CandidateWorkflowStatus.Deferred or CandidateWorkflowStatus.Selected &&
+                    item.Outcome != ScreeningOutcome.Failed)
+                .OrderBy(item => item.Rank).ThenByDescending(item => item.Score).ToArray();
+            awaitingDecision = items.Where(item => completedJobs.ContainsKey(item.ExternalId) && item.Status == CandidateWorkflowStatus.Selected)
+                .Select(item => new DashboardEvaluation(item, completedJobs[item.ExternalId]))
+                .OrderByDescending(item => item.Job.CreatedUtc).ToArray();
+            watchlist = items.Where(item => IsOnWatchlist(item) &&
+                    item.Status is not (CandidateWorkflowStatus.Rejected or CandidateWorkflowStatus.Excluded))
+                .OrderBy(item => item.Symbol).ToArray();
+            var quoteResults = await Task.WhenAll(watchlist.Take(5).Select(LoadQuoteAsync));
+            watchlistQuotes = quoteResults.Where(quote => quote is not null).Cast<MarketQuote>()
+                .ToDictionary(quote => quote.Symbol, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (InvalidOperationException exception) { error = exception.Message; }
+        finally { isLoading = false; }
+    }
+
+    private static string CandidateReason(CandidateInboxItem item) => item.Source switch
+    {
+        CandidateSourceType.AiCatalyst => "Candidate review complete",
+        CandidateSourceType.DeterministicScreen => "Initial screen complete",
+        _ => "Ready for review"
+    };
+
+    private static bool IsOnWatchlist(CandidateInboxItem item) => item.IsWatchlisted || item.Source == CandidateSourceType.Watchlist;
+
+    private async Task<MarketQuote?> LoadQuoteAsync(CandidateInboxItem item)
+    {
+        try { return await MarketDataService.GetQuoteAsync(item.Symbol); }
+        catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException or TaskCanceledException) { return null; }
+    }
+
+    private string QuoteText(string symbol)
+    {
+        if (!watchlistQuotes.TryGetValue(symbol, out var quote)) return "Price unavailable";
+        var change = quote.ChangePercent is { } value ? $" · {(value >= 0 ? "+" : null)}{value:0.00}%" : string.Empty;
+        return $"{quote.Last:C2}{change}";
+    }
+
+    private async Task OpenEvaluationAsync(DashboardEvaluation item) =>
+        await DialogService.OpenAsync<FinancialCharts>($"Full Evaluation: {item.Candidate.Symbol}",
+            new Dictionary<string, object?>
+            {
+                [nameof(FinancialCharts.JobExternalId)] = item.Job.ExternalId,
+                [nameof(FinancialCharts.IsDialog)] = true
+            },
+            new DialogOptions { Width = "95vw", Height = "92vh", CssClass = "rts-evaluation-dialog", Resizable = true,
+                Draggable = true, CloseDialogOnOverlayClick = false });
+
+    private sealed record DashboardEvaluation(CandidateInboxItem Candidate, EvaluationJobDetails Job);
+}

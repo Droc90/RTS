@@ -32,3 +32,16 @@ public sealed class MarketDataSnapshot
     public string BarsJson { get; set; } = string.Empty;
     public string MissingBarsJson { get; set; } = string.Empty;
 }
+
+public sealed class EvaluationResult
+{
+    public long Id { get; set; }
+    public Guid ExternalId { get; set; }
+    public long EvaluationJobId { get; set; }
+    public DateTime CreatedUtc { get; set; }
+    public string CalculationVersion { get; set; } = string.Empty;
+    public string ConfigurationJson { get; set; } = string.Empty;
+    public string ResultJson { get; set; } = string.Empty;
+    public string MarketDataSnapshotExternalIdsJson { get; set; } = string.Empty;
+    public byte[] RowVersion { get; set; } = [];
+}

@@ -2,23 +2,30 @@
 @attribute [Authorize]
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using System.Text.Json
+@using System.Text.RegularExpressions
 @using RTS.Application.Charting
 @using RTS.Application.EvaluationJobs
+@using RTS.Application.CandidateDiscovery
 @using RTS.Domain.TradingModels.Timeframes
 @using RTS.Web.Identity
 @inject IFinancialChartService ChartService
-@inject IChartEvaluationConfigurationProvider EvaluationConfigurationProvider
+@inject ICanonicalEvaluationService CanonicalEvaluationService
 @inject IEvaluationJobService EvaluationJobService
+@inject ICandidateInboxService CandidateInboxService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
 
 <PageTitle>Full Evaluation</PageTitle>
 
 <section class="py-4 rts-evaluation" aria-labelledby="charts-heading">
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-        <div>@if (!IsDialog) { <nav class="d-flex gap-3" aria-label="Evaluation navigation"><a href="/candidates">← Candidate Inbox</a><a href="/evaluation-jobs">Evaluation History</a></nav><h1 id="charts-heading" class="h2 mt-2">Full Evaluation@(job is null ? null : $": {job.Symbol}")</h1> }@if (job is not null) { <p class="text-body-secondary mb-0">Data preparation: @job.Status · @job.ProgressPercent% @job.ProgressMessage</p> }</div>
-        <div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-primary" @onclick="RerunAsync" disabled="@(isBusy || isRerunning || job is null)">@(isRerunning ? "Starting…" : "Re-do evaluation")</button><button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@isBusy">Refresh data</button></div>
+        <div>@if (!IsDialog) { <nav class="d-flex gap-3" aria-label="Evaluation navigation"><a href="/candidates">← Candidate Inbox</a><a href="/evaluation-jobs">Evaluation History</a></nav><h1 id="charts-heading" class="h2 mt-2">Full Evaluation@(job is null ? null : $": {job.Symbol}")</h1> }@if (job is not null) { <p class="text-body-secondary mb-0">Evaluation: @job.Status · @job.ProgressPercent% @job.ProgressMessage</p> }</div>
+        <div class="d-flex flex-wrap gap-2"><button class="btn @(IsOnWatchlist ? "btn-outline-secondary" : "btn-outline-primary")" @onclick="ToggleWatchlistAsync" disabled="@(isBusy || candidate is null)">@(IsOnWatchlist ? "Remove from watchlist" : "Add to watchlist")</button><button class="btn btn-outline-primary" @onclick="RerunAsync" disabled="@(isBusy || isRerunning || job is null)">@(isRerunning ? "Starting…" : "Re-do evaluation")</button><button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@isBusy">Refresh data</button></div>
     </div>
+    @if (!string.IsNullOrWhiteSpace(watchlistMessage)) { <div class="alert alert-success">@watchlistMessage</div> }
     @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert alert-danger">@error</div> }
+    else if (job?.Status == EvaluationJobStatus.Failed && !string.IsNullOrWhiteSpace(job.ErrorMessage)) { <div class="alert alert-danger"><strong>Evaluation failed:</strong> @job.ErrorMessage</div> }
     else if (isBusy) { <p>Loading normalized market data…</p> }
     else if (views.Count == 0)
     {
@@ -26,22 +33,93 @@
     }
     else
     {
-        <div class="alert alert-info" role="status">
-            <strong>Market data is ready.</strong> Price, volume, Bollinger Bands, SMA50, MACD, and RSI are calculated below. The percentages above describe data and chart preparation; timeframe findings, scores, and explanations are the next evaluation stage.
-        </div>
         <div class="rts-evaluation-results">
         @if (evaluation is not null)
         {
+            @if (canonicalResult?.CandidateContext is { } context)
+            {
+                <div class="card mb-4"><div class="card-body">
+                    <h2 class="h4 mb-1">Why this stock is here</h2>
+                    <div class="row g-3 mt-1">
+                        @if (!string.IsNullOrWhiteSpace(context.PrimaryThesis)) { <div class="col-12 col-lg-6"><h3 class="h6">Why it may matter</h3><p class="mb-0">@ContextText(context.PrimaryThesis, context.Evidence)</p></div> }
+                        @if (!string.IsNullOrWhiteSpace(context.PortfolioFit)) { <div class="col-12 col-lg-6"><h3 class="h6">How it may fit</h3><p class="mb-0">@ContextText(context.PortfolioFit, context.Evidence)</p></div> }
+                        @if (!string.IsNullOrWhiteSpace(context.IdentifiedRisks)) { <div class="col-12 col-lg-6"><h3 class="h6">Biggest concern</h3><p class="mb-0">@ContextText(context.IdentifiedRisks, context.Evidence)</p></div> }
+                        @if (!string.IsNullOrWhiteSpace(context.EvaluationFocus)) { <div class="col-12 col-lg-6"><h3 class="h6">What needs confirmation</h3><p class="mb-0">@ContextText(context.EvaluationFocus, context.Evidence)</p></div> }
+                    </div>
+                    @if (context.Evidence.Count > 0)
+                    {
+                        <details class="mt-3"><summary>Sources (@context.Evidence.Count)</summary><ol class="mt-2 mb-0">@foreach (var item in context.Evidence) { <li><a href="@item.Source" target="_blank" rel="noopener noreferrer">@item.Title</a><span class="text-body-secondary"> — @PlainSentence(item.Summary, 180)</span></li> }</ol></details>
+                    }
+                    <details class="mt-2"><summary>About this candidate record</summary><p class="small text-body-secondary mt-2 mb-0">@context.AssetType · @context.Source · discovery score @context.DiscoveryScore.ToString("0.#") · observed @context.DiscoveryDataTimestampUtc.ToLocalTime().ToString("g")</p>@if (context.AiProvenance is { } ai) { <p class="small text-body-secondary mt-1 mb-0">@ai.Provider · @ai.Model · prompt @ai.PromptVersion · schema @ai.SchemaVersion</p> }</details>
+                </div></div>
+            }
             <div class="card mb-4 rts-evaluation-summary"><div class="card-body">
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div><h2 class="h4 mb-1">Technical evaluation</h2><p class="small text-body-secondary mb-1">@evaluation.ConfigurationName · version @evaluation.ConfigurationVersion</p><p class="text-body-secondary mb-0">@evaluation.Explanation</p></div><span class="badge rounded-pill fs-6 @ToneClass(evaluation.Tone)">@evaluation.OverallScore.ToString("0.0") / 100 · @(evaluation.PassedMandatoryGates ? ToneLabel(evaluation.Tone) : "Gate failed")</span></div>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div><h2 class="h4 mb-1">Technical evaluation</h2><p class="small text-body-secondary mb-1">@evaluation.ConfigurationName · model version @evaluation.ConfigurationVersion@if (canonicalResult is not null) { <text> · calculation version @canonicalResult.CalculationVersion</text> }</p><p class="text-body-secondary mb-0">@evaluation.Explanation</p></div><span class="badge rounded-pill fs-6 @ToneClass(evaluation.Tone)">@evaluation.OverallScore.ToString("0.0") / 100 · @(evaluation.PassedMandatoryGates ? ToneLabel(evaluation.Tone) : "Gate failed")</span></div>
+                @if (changes is not null)
+                {
+                    <div class="border rounded p-3 mt-3">
+                        <h3 class="h5">What changed</h3>
+                        <p class="small text-body-secondary">Compared with the evaluation from @changes.PreviousEvaluationUtc.ToLocalTime().ToString("g").</p>
+                        <p class="mb-2"><strong>Overall score:</strong> @changes.PreviousScore.ToString("0.0") to @changes.CurrentScore.ToString("0.0") (@FormatScoreChange(changes.ScoreChange)). <strong>Conclusion:</strong> @ToneLabel(changes.PreviousTone) to @ToneLabel(changes.CurrentTone).</p>
+                        @if (changes.GateStatusChanged) { <p class="mb-2"><strong>Mandatory gate status changed.</strong></p> }
+                        @if (changes.ConfigurationChanged) { <p class="mb-2"><strong>The scoring configuration changed between evaluations.</strong></p> }
+                        @if (changes.CalculationVersionChanged) { <p class="mb-2"><strong>The evaluation calculation version changed.</strong></p> }
+                        @if (changes.TimeframeChanges.Count > 0) { <ul class="mb-0">@foreach (var change in changes.TimeframeChanges) { <li>@change</li> }</ul> }
+                        else { <p class="mb-0">No timeframe-level score, conclusion, or gate changes were detected.</p> }
+                    </div>
+                }
                 <div class="row g-3 mt-1">@foreach (var timeframe in evaluation.Timeframes) { <div class="col-12 col-lg-4"><div class="border rounded p-3 h-100"><div class="d-flex justify-content-between"><h3 class="h5">@timeframe.TimeframeName</h3><span class="badge @ToneClass(timeframe.Tone)">@(timeframe.PassedMandatoryGates ? timeframe.Score.ToString("0.0") : "Gate failed")</span></div><ul class="list-unstyled mb-0">@foreach (var finding in timeframe.Findings) { <li class="mb-2"><strong>@finding.Name:</strong> @finding.Explanation @if (finding.Purpose == RTS.Domain.Rules.RulePurpose.Score) { <span class="text-body-secondary">(@finding.Contribution.ToString("0.#")/@finding.Weight.ToString("0.#"))</span> }</li> }</ul></div></div> }</div>
+                @if (string.IsNullOrWhiteSpace(evaluation.ConfidenceExplanation))
+                {
+                    <div class="alert alert-secondary mt-3 mb-0">Confidence, risk, uncertainty, and data-quality summaries were not captured by this evaluation's calculation version. Re-do the evaluation to generate them.</div>
+                }
+                else
+                {
+                <div class="row g-3 mt-2">
+                    <div class="col-12 col-lg-6"><div class="border rounded p-3 h-100"><h3 class="h5">Confidence</h3><p class="display-6 mb-1">@evaluation.ConfidenceScore.ToString("0")%</p><p class="mb-0 text-body-secondary">@evaluation.ConfidenceExplanation</p></div></div>
+                    <div class="col-12 col-lg-6"><div class="border rounded p-3 h-100"><h3 class="h5">Risks and uncertainty</h3>
+                        @if ((evaluation.Risks?.Count ?? 0) == 0) { <p>No configured technical risk gate or warning was triggered.</p> }
+                        else { <ul>@foreach (var item in evaluation.Risks ?? []) { <li>@item</li> }</ul> }
+                        <ul class="mb-0">@foreach (var item in evaluation.Uncertainties ?? []) { <li>@item</li> }</ul>
+                    </div></div>
+                </div>
+                }
+                @if (evaluation.ScenarioLevels is { Count: > 0 } scenarioLevels)
+                {
+                    <div class="border rounded p-3 mt-3">
+                        <h3 class="h5">Scenario reference levels</h3>
+                        <p class="small text-body-secondary">Deterministic analytical references from the @scenarioLevels.First().TimeframeKey chart. These are not personalized entries, stops, targets, or trade instructions.</p>
+                        <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>Reference</th><th>Price</th><th>From current</th><th>Calculated basis</th></tr></thead><tbody>
+                            @foreach (var level in scenarioLevels) { <tr><th scope="row">@level.Name</th><td>@level.Price.ToString("C2")</td><td>@FormatPercent(level.DistanceFromCurrentPercent)</td><td>@level.CalculationBasis</td></tr> }
+                        </tbody></table></div>
+                    </div>
+                }
             </div></div>
         }
         <div class="rts-market-charts">
         <h2 class="h4">Market data and charts</h2>
         <p class="text-body-secondary">Choose a timeframe. Data was prepared for @views.Count of @InitialChartSpecification.Views.Count configured views.</p>
-        <div class="btn-group mb-3 rts-timeframe-selector" role="group" aria-label="Chart timeframe">
-            @foreach (var view in views) { <button class="btn @(selected?.Definition.Key == view.Definition.Key ? "btn-primary" : "btn-outline-primary")" @onclick="() => selected = view">@view.Definition.Key · @view.Definition.BarIntervalValue @FormatInterval(view.Definition.BarIntervalUnit)</button> }
+        <div class="d-flex flex-wrap align-items-start gap-2 mb-3 rts-chart-controls">
+            <div class="btn-group rts-timeframe-selector" role="group" aria-label="Chart timeframe">
+                @foreach (var view in views) { <button class="btn @(selected?.Definition.Key == view.Definition.Key ? "btn-primary" : "btn-outline-primary")" @onclick="() => SelectView(view)">@view.Definition.Key · @view.Definition.BarIntervalValue @FormatInterval(view.Definition.BarIntervalUnit)</button> }
+            </div>
+            <details class="dropdown rts-indicator-picker"><summary class="btn btn-outline-secondary">Indicators</summary><div class="dropdown-menu show position-static p-3 mt-1">
+                <p class="small text-body-secondary">Display choices do not change this evaluation's saved score.</p>
+                @foreach (var indicator in DisplayIndicatorOptions) { <div class="form-check"><input class="form-check-input" type="checkbox" id="@($"indicator-{indicator.Key}")" checked="@IsIndicatorVisible(indicator.Key)" @onchange="args => ToggleIndicatorAsync(indicator.Key, args.Value is true)" /><label class="form-check-label" for="@($"indicator-{indicator.Key}")">@indicator.Name <span class="text-body-secondary">· model indicator</span></label></div> }
+                <details class="mt-2"><summary>Change display parameters</summary><div class="row g-2 mt-1">
+                    <div class="col-6"><label class="form-label small">SMA period</label><input class="form-control form-control-sm" type="number" min="2" max="250" value="@indicatorSettings.SmaPeriod" @onchange='args => ChangeIndicatorSettingAsync("sma", args.Value)' /></div>
+                    <div class="col-6"><label class="form-label small">Bollinger period</label><input class="form-control form-control-sm" type="number" min="2" max="250" value="@indicatorSettings.BollingerPeriod" @onchange='args => ChangeIndicatorSettingAsync("bollingerPeriod", args.Value)' /></div>
+                    <div class="col-6"><label class="form-label small">Band deviations</label><input class="form-control form-control-sm" type="number" min="0.5" max="5" step="0.1" value="@indicatorSettings.BollingerDeviations" @onchange='args => ChangeIndicatorSettingAsync("bollingerDeviations", args.Value)' /></div>
+                    <div class="col-4"><label class="form-label small">MACD fast</label><input class="form-control form-control-sm" type="number" min="2" max="100" value="@indicatorSettings.MacdFastPeriod" @onchange='args => ChangeIndicatorSettingAsync("macdFast", args.Value)' /></div>
+                    <div class="col-4"><label class="form-label small">MACD slow</label><input class="form-control form-control-sm" type="number" min="3" max="250" value="@indicatorSettings.MacdSlowPeriod" @onchange='args => ChangeIndicatorSettingAsync("macdSlow", args.Value)' /></div>
+                    <div class="col-4"><label class="form-label small">MACD signal</label><input class="form-control form-control-sm" type="number" min="2" max="100" value="@indicatorSettings.MacdSignalPeriod" @onchange='args => ChangeIndicatorSettingAsync("macdSignal", args.Value)' /></div>
+                    <div class="col-6"><label class="form-label small">RSI period</label><input class="form-control form-control-sm" type="number" min="2" max="100" value="@indicatorSettings.RsiPeriod" @onchange='args => ChangeIndicatorSettingAsync("rsi", args.Value)' /></div>
+                    <div class="col-6"><label class="form-label small">RSI lower guide</label><input class="form-control form-control-sm" type="number" min="0" max="100" value="@rsiLowerGuide" @onchange='args => ChangeIndicatorSettingAsync("rsiLowerGuide", args.Value)' /></div>
+                    <div class="col-6"><label class="form-label small">RSI upper guide</label><input class="form-control form-control-sm" type="number" min="0" max="100" value="@rsiUpperGuide" @onchange='args => ChangeIndicatorSettingAsync("rsiUpperGuide", args.Value)' /></div>
+                </div></details>
+                @if (!string.IsNullOrWhiteSpace(indicatorSettingError)) { <p class="small text-danger mt-2 mb-0">@indicatorSettingError</p> }
+                <button type="button" class="btn btn-sm btn-link px-0 mt-2" @onclick="RestoreIndicatorDefaultsAsync">Restore model defaults</button>
+            </div></details>
         </div>
         @if (selected is not null)
         {
@@ -50,27 +128,54 @@
                 <RadzenChart Style="width:100%; height:22rem;" class="rts-financial-chart">
                     <RadzenChartTooltipOptions Shared="true" Trigger="ChartTooltipTrigger.Axis" HighlightDataPoint="true" />
                     <RadzenLegend Position="LegendPosition.Bottom" />
-                    <RadzenLineSeries Data="@selected.Points" CategoryProperty="TimestampUtc" ValueProperty="Close" Title="Close" LineType="LineType.Solid" />
-                    <RadzenLineSeries Data="@WithValue(point => point.Sma50)" CategoryProperty="TimestampUtc" ValueProperty="Sma50" Title="SMA50" LineType="LineType.Solid" />
-                    <RadzenLineSeries Data="@WithValue(point => point.BollingerUpper)" CategoryProperty="TimestampUtc" ValueProperty="BollingerUpper" Title="Bollinger upper" LineType="LineType.Dashed" />
-                    <RadzenLineSeries Data="@WithValue(point => point.BollingerMiddle)" CategoryProperty="TimestampUtc" ValueProperty="BollingerMiddle" Title="Bollinger middle" LineType="LineType.Dashed" />
-                    <RadzenLineSeries Data="@WithValue(point => point.BollingerLower)" CategoryProperty="TimestampUtc" ValueProperty="BollingerLower" Title="Bollinger lower" LineType="LineType.Dashed" />
-                    <RadzenCategoryAxis Padding="20"><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis>
+                    <RadzenCandlestickSeries Data="@displayPoints" CategoryProperty="Sequence" OpenProperty="Open" HighProperty="High" LowProperty="Low" CloseProperty="Close" Title="Price" BullFill="#198754" BullStroke="#198754" BearFill="#dc3545" BearStroke="#dc3545" />
+                    @if (IsIndicatorVisible("sma50")) { <RadzenLineSeries Data="@WithDisplayValue(point => point.Sma50)" CategoryProperty="Sequence" ValueProperty="Sma50" Title="@($"{indicatorSettings.SmaPeriod}-period trend")" LineType="LineType.Solid" /> }
+                    @if (IsIndicatorVisible("bollinger"))
+                    {
+                        <RadzenLineSeries Data="@WithDisplayValue(point => point.BollingerUpper)" CategoryProperty="Sequence" ValueProperty="BollingerUpper" Title="Typical range upper" LineType="LineType.Dashed" />
+                        <RadzenLineSeries Data="@WithDisplayValue(point => point.BollingerMiddle)" CategoryProperty="Sequence" ValueProperty="BollingerMiddle" Title="Typical range middle" LineType="LineType.Dashed" />
+                        <RadzenLineSeries Data="@WithDisplayValue(point => point.BollingerLower)" CategoryProperty="Sequence" ValueProperty="BollingerLower" Title="Typical range lower" LineType="LineType.Dashed" />
+                    }
+                    <RadzenCategoryAxis Padding="20" Formatter="@FormatChartCategory"><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis>
                     <RadzenValueAxis Formatter="@(value => string.Format("{0:C2}", value))" />
                 </RadzenChart>
-            </div></div>
-            <div class="card rts-chart-card"><div class="card-body"><h2 class="h4">Volume</h2>
-                <RadzenChart Style="width:100%; height:15rem;" class="rts-financial-chart"><RadzenChartTooltipOptions Trigger="ChartTooltipTrigger.Axis" HighlightDataPoint="true" /><RadzenLegend Visible="false" /><RadzenColumnSeries Data="@selected.Points" CategoryProperty="TimestampUtc" ValueProperty="Volume" Title="Volume" /><RadzenCategoryAxis><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis></RadzenChart>
-            </div></div>
-            <div class="card mt-4 rts-chart-card"><div class="card-body"><h2 class="h4">MACD (12, 26, 9)</h2>
-                <RadzenChart Style="width:100%; height:16rem;" class="rts-financial-chart"><RadzenChartTooltipOptions Shared="true" Trigger="ChartTooltipTrigger.Axis" HighlightDataPoint="true" /><RadzenLegend Position="LegendPosition.Bottom" /><RadzenLineSeries Data="@WithValue(point => point.Macd)" CategoryProperty="TimestampUtc" ValueProperty="Macd" Title="MACD" /><RadzenLineSeries Data="@WithValue(point => point.MacdSignal)" CategoryProperty="TimestampUtc" ValueProperty="MacdSignal" Title="Signal" /><RadzenColumnSeries Data="@WithValue(point => point.MacdHistogram)" CategoryProperty="TimestampUtc" ValueProperty="MacdHistogram" Title="Histogram" /><RadzenCategoryAxis><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis></RadzenChart>
-            </div></div>
-            <div class="card mt-4 rts-chart-card"><div class="card-body"><h2 class="h4">RSI (14)</h2>
-                <RadzenChart Style="width:100%; height:15rem;" class="rts-financial-chart"><RadzenChartTooltipOptions Trigger="ChartTooltipTrigger.Axis" HighlightDataPoint="true" /><RadzenLegend Visible="false" /><RadzenLineSeries Data="@WithValue(point => point.Rsi)" CategoryProperty="TimestampUtc" ValueProperty="Rsi" Title="RSI" /><RadzenCategoryAxis><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis><RadzenValueAxis Min="0" Max="100" /></RadzenChart>
-                <p class="small text-body-secondary mb-0">Missing intervals: @selected.MissingBarsUtc.Count.</p>
+                @if (IsIndicatorVisible("volume")) { <div class="rts-indicator-panel"><h3 class="h6">Volume</h3><RadzenChart Style="width:100%; height:10rem;" class="rts-financial-chart"><RadzenChartTooltipOptions Trigger="ChartTooltipTrigger.Axis" HighlightDataPoint="true" /><RadzenLegend Visible="false" /><RadzenColumnSeries Data="@displayPoints" CategoryProperty="Sequence" ValueProperty="Volume" Title="Volume" /><RadzenCategoryAxis Formatter="@FormatChartCategory"><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis></RadzenChart></div> }
+                @if (IsIndicatorVisible("macd")) { <div class="rts-indicator-panel"><h3 class="h6">Momentum (MACD @indicatorSettings.MacdFastPeriod, @indicatorSettings.MacdSlowPeriod, @indicatorSettings.MacdSignalPeriod)</h3><RadzenChart Style="width:100%; height:12rem;" class="rts-financial-chart"><RadzenChartTooltipOptions Shared="true" Trigger="ChartTooltipTrigger.Axis" HighlightDataPoint="true" /><RadzenLegend Position="LegendPosition.Bottom" /><RadzenLineSeries Data="@WithDisplayValue(point => point.Macd)" CategoryProperty="Sequence" ValueProperty="Macd" Title="MACD" /><RadzenLineSeries Data="@WithDisplayValue(point => point.MacdSignal)" CategoryProperty="Sequence" ValueProperty="MacdSignal" Title="Signal" /><RadzenColumnSeries Data="@WithDisplayValue(point => point.MacdHistogram)" CategoryProperty="Sequence" ValueProperty="MacdHistogram" Title="Histogram" /><RadzenCategoryAxis Formatter="@FormatChartCategory"><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis></RadzenChart></div> }
+                @if (IsIndicatorVisible("rsi")) { <div class="rts-indicator-panel"><h3 class="h6">Overbought/oversold pressure (RSI @indicatorSettings.RsiPeriod)</h3><RadzenChart Style="width:100%; height:10rem;" class="rts-financial-chart"><RadzenChartTooltipOptions Trigger="ChartTooltipTrigger.Axis" HighlightDataPoint="true" /><RadzenLegend Position="LegendPosition.Bottom" /><RadzenLineSeries Data="@WithDisplayValue(point => point.Rsi)" CategoryProperty="Sequence" ValueProperty="Rsi" Title="RSI" Stroke="#212529" /><RadzenLineSeries Data="@GuidePoints(rsiLowerGuide)" CategoryProperty="Sequence" ValueProperty="Value" Title="@RsiLowerTitle" Stroke="#198754" LineType="LineType.Dashed" /><RadzenLineSeries Data="@GuidePoints(rsiUpperGuide)" CategoryProperty="Sequence" ValueProperty="Value" Title="@RsiUpperTitle" Stroke="#dc3545" LineType="LineType.Dashed" /><RadzenCategoryAxis Formatter="@FormatChartCategory"><RadzenAxisCrosshair Visible="true" Snap="true" /></RadzenCategoryAxis><RadzenValueAxis Min="0" Max="100" /></RadzenChart></div> }
             </div></div>
         }
         </div>
+        @if (canonicalResult?.Research is { } research)
+        {
+            <details class="card mb-4"><summary class="card-header h5 mb-0">Fundamental and catalyst research</summary><div class="card-body">
+                <p>@research.Overview</p>
+                <div class="row g-3">
+                    <div class="col-12 col-lg-6"><h3 class="h6">Fundamental findings</h3><ul>@foreach (var item in research.FundamentalFindings) { <li>@item</li> }</ul></div>
+                    <div class="col-12 col-lg-6"><h3 class="h6">Current catalysts</h3><ul>@foreach (var item in research.Catalysts) { <li>@item</li> }</ul></div>
+                    <div class="col-12 col-lg-6"><h3 class="h6">Research risks</h3><ul>@foreach (var item in research.Risks) { <li>@item</li> }</ul></div>
+                    <div class="col-12 col-lg-6"><h3 class="h6">Research uncertainty</h3><ul>@foreach (var item in research.Uncertainties) { <li>@item</li> }</ul></div>
+                </div>
+                <details><summary>Research evidence (@research.Evidence.Count)</summary><ul class="mt-2 mb-0">@foreach (var item in research.Evidence) { <li><a href="@item.Source" target="_blank" rel="noopener noreferrer">@item.Title</a> — @item.Summary <span class="text-body-secondary">(@item.Quality; retrieved @item.RetrievedUtc.ToLocalTime().ToString("g"))</span></li> }</ul></details>
+                <p class="small text-body-secondary mt-2 mb-0">Research provenance: @research.Provenance.Provider · @research.Provenance.Model · prompt @research.Provenance.PromptVersion · schema @research.Provenance.SchemaVersion. Research does not override the deterministic technical score.</p>
+            </div></details>
+        }
+        @if (evaluation is not null && ((evaluation.BullishEvidence?.Count ?? 0) > 0 || (evaluation.BearishEvidence?.Count ?? 0) > 0 || (evaluation.ConflictingEvidence?.Count ?? 0) > 0))
+        {
+            <details class="card mb-4"><summary class="card-header h5 mb-0">Technical evidence</summary><div class="card-body"><div class="row g-3">
+                <div class="col-12 col-lg-4"><h3 class="h6 text-success">Constructive evidence</h3><ul>@foreach (var item in evaluation.BullishEvidence ?? []) { <li>@item</li> }</ul></div>
+                <div class="col-12 col-lg-4"><h3 class="h6 text-danger">Weak evidence</h3><ul>@foreach (var item in evaluation.BearishEvidence ?? []) { <li>@item</li> }</ul></div>
+                <div class="col-12 col-lg-4"><h3 class="h6 text-warning">Conflicting evidence</h3><ul>@foreach (var item in evaluation.ConflictingEvidence ?? []) { <li>@item</li> }</ul></div>
+            </div></div></details>
+        }
+        @if (canonicalResult?.MarketDataProvenance is { Count: > 0 } provenance)
+        {
+            <details class="card mb-4"><summary class="card-header h5 mb-0">Evaluation provenance</summary><div class="card-body">
+                <p class="small text-body-secondary">Canonical result @canonicalResult.ExternalId was produced @canonicalResult.CreatedUtc.ToLocalTime().ToString("g") using calculation version @canonicalResult.CalculationVersion.</p>
+                <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>Provider</th><th>Requested range</th><th>Interval</th><th>Retrieved</th><th>Missing bars</th><th>Snapshot</th></tr></thead><tbody>
+                    @foreach (var item in provenance) { <tr><td>@item.ProviderKey</td><td>@item.RequestedFromUtc.ToLocalTime().ToString("g") – @item.RequestedToUtc.ToLocalTime().ToString("g")</td><td>@item.IntervalValue @FormatInterval(item.IntervalUnit)</td><td>@item.RetrievedUtc.ToLocalTime().ToString("g")</td><td>@item.MissingBarCount</td><td><code>@item.SnapshotExternalId</code></td></tr> }
+                </tbody></table></div>
+            </div></details>
+        }
         </div>
     }
 </section>
@@ -80,44 +185,255 @@
     [Parameter] public bool IsDialog { get; set; }
     private IReadOnlyCollection<FinancialChartView> views = [];
     private FinancialChartView? selected;
+    private IReadOnlyCollection<ChartDisplayPoint> displayPoints = [];
     private EvaluationJobDetails? job;
+    private CandidateInboxItem? candidate;
+    private Guid userExternalId;
+    private CanonicalEvaluationResult? canonicalResult;
     private ChartEvaluationSummary? evaluation;
+    private EvaluationChangeSummary? changes;
     private bool isBusy = true;
     private bool isRerunning;
+    private bool preferencesLoaded;
     private string? error;
+    private string? watchlistMessage;
+    private bool IsOnWatchlist => candidate is not null && (candidate.IsWatchlisted || candidate.Source == RTS.Domain.CandidateDiscovery.CandidateSourceType.Watchlist);
+    private const string IndicatorPreferenceKey = "rts.chart.display-preferences.v3";
+    private static readonly DisplayIndicatorOption[] DisplayIndicatorOptions =
+    [
+        new("sma50", "50-period trend (SMA50)"),
+        new("bollinger", "Typical price range (Bollinger Bands)"),
+        new("volume", "Volume"),
+        new("macd", "Momentum (MACD)"),
+        new("rsi", "Overbought/oversold pressure (RSI)")
+    ];
+    private HashSet<string> visibleIndicators = DisplayIndicatorOptions
+        .Select(indicator => indicator.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    private IndicatorCalculationSettings indicatorSettings = new();
+    private decimal rsiLowerGuide = 45m;
+    private decimal rsiUpperGuide = 70m;
+    private string? indicatorSettingError;
 
     private static string FormatInterval(BarIntervalUnit unit) =>
         unit == BarIntervalUnit.Minutes ? "minute" : "day";
 
-    private IEnumerable<FinancialChartPoint> WithValue(Func<FinancialChartPoint, decimal?> selector) =>
-        selected?.Points.Where(point => selector(point).HasValue) ?? [];
+    private IEnumerable<ChartDisplayPoint> WithDisplayValue(Func<ChartDisplayPoint, decimal?> selector) =>
+        displayPoints.Where(point => selector(point).HasValue);
+    private IEnumerable<ChartGuidePoint> GuidePoints(decimal value) =>
+        displayPoints.Select(point => new ChartGuidePoint(point.Sequence, value));
+    private string RsiLowerTitle => $"Lower {rsiLowerGuide:0.#}";
+    private string RsiUpperTitle => $"Upper {rsiUpperGuide:0.#}";
 
     protected override async Task OnParametersSetAsync()
     {
         await LoadAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || preferencesLoaded) return;
+        preferencesLoaded = true;
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("localStorage.getItem", IndicatorPreferenceKey);
+            var saved = string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<ChartDisplayPreferences>(json);
+            if (saved is not null)
+            {
+                var supported = DisplayIndicatorOptions.Select(item => item.Key)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                visibleIndicators = saved.VisibleIndicators.Where(supported.Contains)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                indicatorSettings = saved.Settings;
+                rsiLowerGuide = saved.RsiLowerGuide;
+                rsiUpperGuide = saved.RsiUpperGuide;
+                RebuildDisplayPoints();
+                StateHasChanged();
+            }
+        }
+        catch (JSException)
+        {
+            // Browser storage is an optional display convenience; chart evaluation remains available without it.
+        }
+    }
+
     private async Task LoadAsync()
     {
         isBusy = true;
         error = null;
+        watchlistMessage = null;
+        changes = null;
+        canonicalResult = null;
         var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
-        if (!principal.TryGetExternalUserId(out var userExternalId)) { error = "Your user identifier is unavailable."; isBusy = false; return; }
+        if (!principal.TryGetExternalUserId(out userExternalId)) { error = "Your user identifier is unavailable."; isBusy = false; return; }
         try
         {
             job = (await EvaluationJobService.GetJobsAsync(userExternalId)).SingleOrDefault(item => item.ExternalId == JobExternalId)
                 ?? throw new InvalidOperationException("The evaluation job could not be found.");
+            candidate = (await CandidateInboxService.GetInboxAsync(userExternalId))
+                .SingleOrDefault(item => item.ExternalId == job.CandidateExternalId)
+                ?? throw new InvalidOperationException("The evaluated candidate could not be found.");
             views = await ChartService.GetViewsAsync(userExternalId, JobExternalId);
-            var configuration = await EvaluationConfigurationProvider.GetAsync(userExternalId);
-            evaluation = InitialChartEvaluator.Evaluate(views, configuration);
+            canonicalResult = await CanonicalEvaluationService.GetOrGenerateAsync(userExternalId, JobExternalId);
+            evaluation = canonicalResult?.Summary;
+            changes = evaluation is null ? null : await CanonicalEvaluationService.GetChangesAsync(userExternalId, JobExternalId);
             selected = views.FirstOrDefault(view => view.Definition.Key == selected?.Definition.Key) ?? views.FirstOrDefault();
+            RebuildDisplayPoints();
         }
         catch (InvalidOperationException exception) { error = exception.Message; }
         isBusy = false;
     }
 
     private static string ToneLabel(TechnicalFindingTone tone) => tone switch { TechnicalFindingTone.Bullish => "Constructive", TechnicalFindingTone.Neutral => "Mixed", TechnicalFindingTone.Bearish => "Weak", _ => "Unavailable" };
+    private static string FormatScoreChange(decimal value) => value > 0 ? $"+{value:0.0}" : value.ToString("0.0");
+    private static string FormatPercent(decimal value) => value > 0 ? $"+{value:0.0}%" : $"{value:0.0}%";
     private static string ToneClass(TechnicalFindingTone tone) => tone switch { TechnicalFindingTone.Bullish => "text-bg-success", TechnicalFindingTone.Neutral => "text-bg-warning", TechnicalFindingTone.Bearish => "text-bg-danger", _ => "text-bg-secondary" };
+
+    private static string ContextText(string text, IReadOnlyCollection<RTS.Application.CandidateDiscovery.CandidateEvidence> evidence)
+    {
+        var cleaned = Regex.Replace(text, @"\[([^\]]+)\]\((https?://[^)]+)\)", match =>
+            $"{match.Groups[1].Value} {EvidenceReference(match.Groups[2].Value, evidence)}");
+        cleaned = Regex.Replace(cleaned, @"\(?https?://[^\s)]+\)?", match =>
+            EvidenceReference(match.Value.Trim('(', ')'), evidence));
+        cleaned = cleaned
+            .Replace("remains educationally interesting as a pick-and-shovel", "may benefit as a supplier in", StringComparison.OrdinalIgnoreCase)
+            .Replace("educationally interesting", "worth watching", StringComparison.OrdinalIgnoreCase)
+            .Replace("pick-and-shovel", "supplier", StringComparison.OrdinalIgnoreCase)
+            .Replace("That supports the idea that ", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("commercialization is progressing", "sales progress appears to be improving", StringComparison.OrdinalIgnoreCase)
+            .Replace("while still leaving meaningful execution risk", "but the company still has to prove it can deliver", StringComparison.OrdinalIgnoreCase);
+        return PlainSentence(cleaned, 220);
+    }
+
+    private static string EvidenceReference(string url, IReadOnlyCollection<RTS.Application.CandidateDiscovery.CandidateEvidence> evidence)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var target)) return "[source]";
+        var index = evidence.Select((item, offset) => new { item.Source, offset })
+            .FirstOrDefault(item => item.Source.Host.Equals(target.Host, StringComparison.OrdinalIgnoreCase) &&
+                item.Source.AbsolutePath.Equals(target.AbsolutePath, StringComparison.OrdinalIgnoreCase))?.offset;
+        return index.HasValue ? $"[{index.Value + 1}]" : "[source]";
+    }
+
+    private static string PlainSentence(string text, int maximumLength)
+    {
+        var sentences = Regex.Split(text.Trim(), @"(?<=[.!?])\s+")
+            .Where(sentence => !string.IsNullOrWhiteSpace(sentence)).ToArray();
+        var conclusionSignals = new[] { "supports", "suggests", "means", "may", "could", "risk", "progress", "but" };
+        var result = sentences.LastOrDefault(sentence => conclusionSignals.Any(signal =>
+            sentence.Contains(signal, StringComparison.OrdinalIgnoreCase))) ?? sentences.FirstOrDefault() ?? text;
+        result = Regex.Replace(result, @"\s+", " ").Trim().TrimEnd('.', ' ');
+        if (result.Length <= maximumLength) return $"{result}.";
+        var cutoff = result.LastIndexOf(' ', maximumLength - 1);
+        return $"{result[..(cutoff > 0 ? cutoff : maximumLength)].TrimEnd(',', ';', ':')}…";
+    }
+
+    private void SelectView(FinancialChartView view)
+    {
+        selected = view;
+        RebuildDisplayPoints();
+    }
+
+    private void RebuildDisplayPoints()
+    {
+        if (selected is null || selected.Points.Count == 0) { displayPoints = []; return; }
+        var source = selected.IndicatorSourcePoints ?? selected.Points;
+        var visibleFromUtc = selected.Points.Min(point => point.TimestampUtc);
+        var visibleToUtc = selected.Points.Max(point => point.TimestampUtc);
+        var calculated = InitialIndicatorCalculator.Calculate(source, indicatorSettings)
+            .Where(point => point.TimestampUtc >= visibleFromUtc && point.TimestampUtc <= visibleToUtc);
+        displayPoints = calculated.OrderBy(point => point.TimestampUtc)
+            .Select((point, index) => new ChartDisplayPoint(index, point)).ToArray();
+    }
+
+    private bool IsIndicatorVisible(string key) => visibleIndicators.Contains(key);
+
+    private async Task ToggleIndicatorAsync(string key, bool visible)
+    {
+        if (visible) visibleIndicators.Add(key); else visibleIndicators.Remove(key);
+        await SaveIndicatorPreferencesAsync();
+    }
+
+    private async Task RestoreIndicatorDefaultsAsync()
+    {
+        visibleIndicators = DisplayIndicatorOptions.Select(item => item.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        indicatorSettings = new();
+        rsiLowerGuide = 45m;
+        rsiUpperGuide = 70m;
+        indicatorSettingError = null;
+        RebuildDisplayPoints();
+        await SaveIndicatorPreferencesAsync();
+    }
+
+    private async Task ChangeIndicatorSettingAsync(string setting, object? rawValue)
+    {
+        var prior = indicatorSettings;
+        var priorLowerGuide = rsiLowerGuide;
+        var priorUpperGuide = rsiUpperGuide;
+        try
+        {
+            var value = decimal.Parse(Convert.ToString(rawValue) ?? string.Empty,
+                System.Globalization.CultureInfo.InvariantCulture);
+            indicatorSettings = setting switch
+            {
+                "sma" => indicatorSettings with { SmaPeriod = decimal.ToInt32(value) },
+                "bollingerPeriod" => indicatorSettings with { BollingerPeriod = decimal.ToInt32(value) },
+                "bollingerDeviations" => indicatorSettings with { BollingerDeviations = value },
+                "macdFast" => indicatorSettings with { MacdFastPeriod = decimal.ToInt32(value) },
+                "macdSlow" => indicatorSettings with { MacdSlowPeriod = decimal.ToInt32(value) },
+                "macdSignal" => indicatorSettings with { MacdSignalPeriod = decimal.ToInt32(value) },
+                "rsi" => indicatorSettings with { RsiPeriod = decimal.ToInt32(value) },
+                _ => indicatorSettings
+            };
+            if (setting == "rsiLowerGuide") rsiLowerGuide = value;
+            if (setting == "rsiUpperGuide") rsiUpperGuide = value;
+            if (rsiLowerGuide is < 0 or > 100 || rsiUpperGuide is < 0 or > 100 ||
+                rsiLowerGuide >= rsiUpperGuide)
+                throw new ArgumentException("RSI guides must be between 0 and 100, with the lower guide below the upper guide.");
+            RebuildDisplayPoints();
+            indicatorSettingError = null;
+            await SaveIndicatorPreferencesAsync();
+        }
+        catch (Exception exception) when (exception is FormatException or OverflowException or
+            ArgumentException)
+        {
+            indicatorSettings = prior;
+            rsiLowerGuide = priorLowerGuide;
+            rsiUpperGuide = priorUpperGuide;
+            indicatorSettingError = exception is ArgumentException && !string.IsNullOrWhiteSpace(exception.Message)
+                ? exception.Message.Split(" (Parameter")[0]
+                : "Enter a valid indicator parameter.";
+        }
+    }
+
+    private async Task SaveIndicatorPreferencesAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", IndicatorPreferenceKey,
+                JsonSerializer.Serialize(new ChartDisplayPreferences(
+                    visibleIndicators.OrderBy(item => item).ToArray(), indicatorSettings,
+                    rsiLowerGuide, rsiUpperGuide)));
+        }
+        catch (JSException)
+        {
+            // The in-memory display choice still applies when browser storage is unavailable.
+        }
+    }
+
+    private string FormatChartCategory(object value)
+    {
+        if (displayPoints.Count == 0) return string.Empty;
+        try
+        {
+            var index = Math.Clamp(Convert.ToInt32(Math.Round(Convert.ToDouble(value))), 0, displayPoints.Count - 1);
+            var timestamp = displayPoints.ElementAt(index).TimestampUtc.ToLocalTime();
+            return selected?.Definition.BarIntervalUnit == BarIntervalUnit.Minutes
+                ? timestamp.ToString("M/d h tt")
+                : timestamp.ToString("M/d");
+        }
+        catch (FormatException) { return string.Empty; }
+        catch (InvalidCastException) { return string.Empty; }
+    }
 
     private async Task RerunAsync()
     {
@@ -131,9 +447,52 @@
                 throw new InvalidOperationException("Your user identifier is unavailable.");
             JobExternalId = await EvaluationJobService.EnqueueSelectedCandidateAsync(userExternalId, job.CandidateExternalId, forceNew: true);
             selected = null;
+            displayPoints = [];
             await LoadAsync();
         }
         catch (InvalidOperationException exception) { error = exception.Message; }
         finally { isRerunning = false; }
+    }
+
+    private async Task ToggleWatchlistAsync()
+    {
+        if (candidate is null) return;
+        var add = !IsOnWatchlist;
+        var changed = await CandidateInboxService.SetWatchlistAsync(userExternalId, candidate.ExternalId, add, candidate.RowVersion);
+        if (!changed) { error = "The candidate changed elsewhere. Refresh and try again."; return; }
+        candidate = (await CandidateInboxService.GetInboxAsync(userExternalId))
+            .Single(item => item.ExternalId == candidate.ExternalId);
+        watchlistMessage = $"{candidate.Symbol} was {(add ? "added to" : "removed from")} your watchlist.";
+    }
+
+    private sealed record DisplayIndicatorOption(string Key, string Name);
+    private sealed record ChartGuidePoint(int Sequence, decimal Value);
+    private sealed record ChartDisplayPreferences(
+        IReadOnlyCollection<string> VisibleIndicators,
+        IndicatorCalculationSettings Settings,
+        decimal RsiLowerGuide,
+        decimal RsiUpperGuide);
+
+    private sealed record ChartDisplayPoint(
+        int Sequence,
+        DateTime TimestampUtc,
+        decimal Open,
+        decimal High,
+        decimal Low,
+        decimal Close,
+        decimal Volume,
+        decimal? Sma50,
+        decimal? BollingerUpper,
+        decimal? BollingerMiddle,
+        decimal? BollingerLower,
+        decimal? Macd,
+        decimal? MacdSignal,
+        decimal? MacdHistogram,
+        decimal? Rsi)
+    {
+        public ChartDisplayPoint(int sequence, FinancialChartPoint point) : this(
+            sequence, point.TimestampUtc, point.Open, point.High, point.Low, point.Close, point.Volume,
+            point.Sma50, point.BollingerUpper, point.BollingerMiddle, point.BollingerLower,
+            point.Macd, point.MacdSignal, point.MacdHistogram, point.Rsi) { }
     }
 }

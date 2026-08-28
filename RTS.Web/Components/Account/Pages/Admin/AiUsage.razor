@@ -1,0 +1,84 @@
+@page "/admin/ai-usage"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RTS.Application.Administration
+@using RTS.Application.Authorization
+@using RTS.Web.Identity
+@attribute [Authorize(Policy = ApplicationPolicyNames.RequireAdministrator)]
+@inject IAiUsageAdministrationService UsageService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>AI usage</PageTitle>
+
+<section class="py-4" aria-labelledby="ai-usage-heading">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div><h1 id="ai-usage-heading" class="h2 mb-1">AI usage</h1><p class="text-body-secondary mb-0">Token and web-search usage reported by OpenAI Responses API calls.</p></div>
+        <button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@isLoading">Refresh</button>
+    </div>
+
+    <div class="row g-3 align-items-end mb-4">
+        <div class="col-sm-4 col-lg-3"><label class="form-label">From</label><input class="form-control" type="date" @bind="fromDate" /></div>
+        <div class="col-sm-4 col-lg-3"><label class="form-label">Through</label><input class="form-control" type="date" @bind="throughDate" /></div>
+        <div class="col-auto"><button class="btn btn-primary" @onclick="LoadAsync" disabled="@isLoading">Apply</button></div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert alert-danger">@error</div> }
+    else if (isLoading) { <p>Loading AI usage…</p> }
+    else if (usage is not null)
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-lg"><div class="card h-100"><div class="card-body"><div class="text-body-secondary">Requests</div><div class="h3 mb-0">@usage.RequestCount.ToString("N0")</div></div></div></div>
+            <div class="col-6 col-lg"><div class="card h-100"><div class="card-body"><div class="text-body-secondary">Input tokens</div><div class="h3 mb-0">@usage.InputTokens.ToString("N0")</div></div></div></div>
+            <div class="col-6 col-lg"><div class="card h-100"><div class="card-body"><div class="text-body-secondary">Output tokens</div><div class="h3 mb-0">@usage.OutputTokens.ToString("N0")</div></div></div></div>
+            <div class="col-6 col-lg"><div class="card h-100"><div class="card-body"><div class="text-body-secondary">Total tokens</div><div class="h3 mb-0">@usage.TotalTokens.ToString("N0")</div></div></div></div>
+            <div class="col-6 col-lg"><div class="card h-100"><div class="card-body"><div class="text-body-secondary">Web searches</div><div class="h3 mb-0">@usage.WebSearchCalls.ToString("N0")</div></div></div></div>
+        </div>
+        @if (usage.Items.Count == 0) { <div class="alert alert-info">No AI usage was recorded in this date range.</div> }
+        else
+        {
+            <div class="table-responsive"><table class="table table-striped align-middle">
+                <thead><tr><th>Recorded</th><th>User</th><th>Operation</th><th>Model</th><th>Input</th><th>Cached</th><th>Output</th><th>Reasoning</th><th>Total</th><th>Searches</th></tr></thead>
+                <tbody>@foreach (var item in usage.Items) { <tr><td class="text-nowrap">@item.RecordedUtc.ToLocalTime().ToString("g")</td><td>@item.UserEmail</td><td>@OperationName(item.OperationType)</td><td><span title="@($"{item.Provider}; prompt {item.PromptVersion}")">@item.Model</span></td><td>@item.InputTokens.ToString("N0")</td><td>@item.CachedInputTokens.ToString("N0")</td><td>@item.OutputTokens.ToString("N0")</td><td>@item.ReasoningOutputTokens.ToString("N0")</td><td>@item.TotalTokens.ToString("N0")</td><td>@item.WebSearchCalls</td></tr> }</tbody>
+            </table></div>
+        }
+    }
+</section>
+
+@code {
+    private DateTime fromDate = DateTime.Today.AddDays(-29);
+    private DateTime throughDate = DateTime.Today;
+    private bool isLoading;
+    private string? error;
+    private Guid userExternalId;
+    private AiUsageSummary? usage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        if (!principal.TryGetExternalUserId(out userExternalId)) { error = "Your user identifier is unavailable."; return; }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isLoading = true; error = null;
+        try
+        {
+            var fromUtc = DateTime.SpecifyKind(fromDate.Date, DateTimeKind.Local).ToUniversalTime();
+            var toUtc = DateTime.SpecifyKind(throughDate.Date.AddDays(1), DateTimeKind.Local).ToUniversalTime();
+            usage = await UsageService.GetUsageAsync(userExternalId, fromUtc, toUtc);
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            error = exception.Message;
+        }
+        finally { isLoading = false; }
+    }
+
+    private static string OperationName(string value) => value switch
+    {
+        "CandidateDiscovery" => "Candidate discovery",
+        "FullEvaluationResearch" => "Full evaluation research",
+        _ => value
+    };
+}

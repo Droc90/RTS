@@ -2,13 +2,13 @@
 
 ## Current status
 
-- Current branch: `feature/evaluation-worker-charts`
+- Current branch: `feature/canonical-evaluation-results`
 - Current milestone: Chart Evaluation and Scoring
 - Application Foundation: 100% complete
 - Configurable Trading Model and Criteria Foundation: 100% complete
 - Candidate Discovery and Screening: 100% complete
-- Overall RTS checklist: 59% complete (63 of 106 items)
-- Cumulative active developer effort: 20–21 hours
+- Overall RTS checklist: 62% complete (66 of 107 items)
+- Cumulative active developer effort: 21–22 hours
 - Architecture: [RTS application architecture](architecture.md)
 - Product and AI design: [RTS product, AI, and adaptive-presentation design](product-ai-and-presentation.md)
 
@@ -89,14 +89,15 @@ Developer effort completed: approximately 4 active developer hours.
 - [x] Produce separate findings and scores by timeframe
 - [x] Apply configurable weights, thresholds, and mandatory rules
 - [x] Produce category and overall scores
-- [ ] Identify bullish, bearish, and conflicting evidence
+- [x] Identify bullish, bearish, and conflicting evidence
 - [x] Explain every score contribution and deduction
 - [ ] Produce the canonical comprehensive evaluation
-- [ ] Preserve data, model, criteria, and calculation snapshots
+- [x] Preserve data, model, criteria, and calculation snapshots
 - [x] Add calculation and evaluation regression tests
 
 ## Adaptive Evaluation Presentation
 
+- [x] Replace line-based price charts with OHLC candlesticks, compress non-trading periods, present synchronized indicator panels, and allow browser-saved display-indicator choices without changing evaluation scores
 - [ ] Define structured canonical evaluation content blocks
 - [ ] Separate evaluation, education, scenarios, and personalized trade planning
 - [ ] Implement the Narrative Report presentation
